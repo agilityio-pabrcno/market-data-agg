@@ -3,11 +3,13 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from market_data_agg.db import Source
+
 
 class MarketQuote(BaseModel):
     """Unified quote across providers (stock, crypto, polymarket)."""
 
-    source: str  # stock | crypto | polymarket
+    source: Source
     symbol: str
     value: float  # price or probability (0–1 for prediction markets)
     volume: float | None = None
@@ -18,7 +20,7 @@ class MarketQuote(BaseModel):
 class StreamMessage(BaseModel):
     """WebSocket push payload for real-time streaming."""
 
-    source: str
+    source: Source
     symbol: str
     price: float
     timestamp: datetime

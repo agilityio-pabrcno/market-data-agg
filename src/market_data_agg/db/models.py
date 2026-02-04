@@ -4,8 +4,17 @@ Only user/application state is persisted. Market quotes are fetched on demand
 and cached in Redis; they are not stored in PostgreSQL.
 """
 from datetime import datetime
+from enum import Enum
 
 from sqlmodel import Field, SQLModel
+
+
+class Source(str, Enum):
+    """Data source for market symbols."""
+
+    STOCK = "stock"
+    CRYPTO = "crypto"
+    POLYMARKET = "polymarket"
 
 
 class User(SQLModel, table=True):
@@ -23,7 +32,7 @@ class Watchlist(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
-    source: str  # stock | crypto | polymarket
+    source: Source
     symbol: str  # AAPL | BTC | event/market id
     external_id: str | None = None  # provider-specific id (e.g. token_id)
 
@@ -33,7 +42,7 @@ class Alert(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
-    source: str
+    source: Source
     symbol: str
     price_above: float | None = None
     price_below: float | None = None
