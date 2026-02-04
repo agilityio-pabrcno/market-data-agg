@@ -1,7 +1,7 @@
 """Pydantic schemas for API and runtime use. Not persisted to DB."""
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from market_data_agg.db import Source
 
@@ -13,7 +13,7 @@ class MarketQuote(BaseModel):
     symbol: str
     value: float  # price or probability (0–1 for prediction markets)
     volume: float | None = None
-    timestamp: datetime = ...
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
     metadata: dict | None = None
 
 
