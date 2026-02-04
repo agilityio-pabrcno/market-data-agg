@@ -245,6 +245,27 @@ Tooling: Celery or RQ.
 
 ---
 
+## Database migrations
+
+Schema changes are managed with **Alembic**. Use the same `DATABASE_URL` as the app (e.g. from `.env` or `.env.local`).
+
+```bash
+# Create a new migration after changing models in db/models.py
+poetry run db-generate -m "Description of change"
+# or: poetry run alembic revision --autogenerate -m "Description of change"
+
+# Apply all pending migrations
+poetry run db-migrate
+# or: poetry run alembic upgrade head
+
+# Roll back one revision
+poetry run alembic downgrade -1
+```
+
+Run these from the project root so that `market_data_agg` is importable (Alembic is configured with `prepend_sys_path = src`).
+
+---
+
 ## Dependency Management
 
 Using Poetry:
