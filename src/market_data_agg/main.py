@@ -6,8 +6,6 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 
-from .db.sessions import init_db
-
 app = FastAPI()
 
 

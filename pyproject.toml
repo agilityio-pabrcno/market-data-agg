@@ -41,4 +41,3 @@ db-migrate = "market_data_agg.db.cli:migrate"
 
 [tool.pylint.MASTER]
 init-hook = 'import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd() / "src"))'
-
