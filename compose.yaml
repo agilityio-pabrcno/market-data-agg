@@ -1,0 +1,29 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-marketdata}:${POSTGRES_PASSWORD:-marketdata}@postgres:5432/${POSTGRES_DB:-marketdata}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-marketdata}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketdata}
+      POSTGRES_DB: ${POSTGRES_DB:-marketdata}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marketdata} -d ${POSTGRES_DB:-marketdata}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
