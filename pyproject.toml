@@ -6,7 +6,7 @@ authors = [
     {name = "pabrcno",email = "pabrcn@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "fastapi (>=0.128.0,<0.129.0)",
     "uvicorn (>=0.40.0,<0.41.0)",
@@ -18,7 +18,10 @@ dependencies = [
     "passlib (>=1.7.4,<2.0.0)",
     "celery (>=5.6.2,<6.0.0)",
     "psycopg2-binary (>=2.9.10,<3.0)",
-    "alembic (>=1.18.3,<2.0.0)"
+    "alembic (>=1.18.3,<2.0.0)",
+    "yfinance (>=0.2.0)",
+    "websockets (>=15.0,<16.0)",
+    "pytz (>=2024.1)"
 ]
 
 [tool.poetry]
@@ -38,6 +41,7 @@ build-backend = "poetry.core.masonry.api"
 dev = "market_data_agg.main:run_dev"
 db-generate = "market_data_agg.db.cli:generate"
 db-migrate = "market_data_agg.db.cli:migrate"
+test-routers = "market_data_agg.cli.test_routers:main"
 
 [tool.pylint.MASTER]
 init-hook = 'import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd() / "src"))'
