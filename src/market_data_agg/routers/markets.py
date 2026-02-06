@@ -10,7 +10,8 @@ import httpx
 from fastapi import APIRouter, Depends, Query
 
 from market_data_agg.db import Source
-from market_data_agg.providers import YFinanceProvider, CoinGeckoProvider, PolymarketProvider
+from market_data_agg.providers import (CoinGeckoProvider, PolymarketProvider,
+                                       YFinanceProvider)
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/markets", tags=["markets"])
@@ -70,7 +71,7 @@ async def get_market_overview(
                 quote = await stocks_provider.get_quote(symbol)
                 quotes.append(quote)
             except (httpx.HTTPError, ValueError, KeyError):
-                pass  # Skip unavailable
+                pass
 
     # Fetch crypto
     if include_crypto:
@@ -79,7 +80,7 @@ async def get_market_overview(
                 quote = await coingecko.get_quote(symbol)
                 quotes.append(quote)
             except (httpx.HTTPError, ValueError, KeyError):
-                pass  # Skip unavailable
+                pass
 
     # Fetch prediction markets
     if include_polymarket:
@@ -87,7 +88,7 @@ async def get_market_overview(
             markets = await polymarket.list_markets(active=True, limit=polymarket_limit)
             quotes.extend(markets)
         except (httpx.HTTPError, ValueError, KeyError):
-            pass  # Skip if unavailable
+            pass
 
     return quotes
 
@@ -119,7 +120,7 @@ async def get_top_movers(
                 quote = await coingecko.get_quote(symbol)
                 quotes.append(quote)
             except (httpx.HTTPError, ValueError, KeyError):
-                pass  # Skip unavailable
+                pass
 
     # Sort by 24h change if available
     def get_change(q: MarketQuote) -> float:
