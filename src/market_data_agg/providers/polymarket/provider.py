@@ -13,7 +13,8 @@ from market_data_agg.db import Source
 from market_data_agg.providers.base import MarketProvider
 from market_data_agg.providers.polymarket.cache import PolymarketMarketCache
 from market_data_agg.providers.polymarket.mapper import market_to_quote
-from market_data_agg.providers.polymarket.resolver import PolymarketSymbolResolver
+from market_data_agg.providers.polymarket.resolver import \
+    PolymarketSymbolResolver
 from market_data_agg.schemas import MarketQuote, StreamMessage
 
 
@@ -61,22 +62,8 @@ class PolymarketProvider(MarketProvider):
     async def get_history(
         self, symbol: str, start: datetime, end: datetime
     ) -> list[MarketQuote]:
-        """Fetch historical data for a prediction market.
-
-        Note: Polymarket's historical data API is limited. This provider
-        returns the current state as a single data point.
-
-        Args:
-            symbol: Market slug or condition ID.
-            start: Start of time range (not used - limited API).
-            end: End of time range (not used - limited API).
-
-        Returns:
-            List with current quote (historical API is limited).
-        """
-        market = await self._resolver.resolve(symbol)
-        quote = market_to_quote(market)
-        return [quote]
+        raise NotImplementedError("Historical data is not supported by this provider")
+   
 
     async def stream(self, symbols: list[str]) -> AsyncIterator[StreamMessage]:
         """Stream real-time price updates for prediction markets.
@@ -233,4 +220,5 @@ class PolymarketProvider(MarketProvider):
             self._ws = None
 
         await self._gamma_client.aclose()
+        await self._clob_client.aclose()
         await self._clob_client.aclose()
