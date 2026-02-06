@@ -63,7 +63,6 @@ class PolymarketProvider(MarketProvider):
         self, symbol: str, start: datetime, end: datetime
     ) -> list[MarketQuote]:
         raise NotImplementedError("Historical data is not supported by this provider")
-   
 
     async def stream(self, symbols: list[str]) -> AsyncIterator[StreamMessage]:
         """Stream real-time price updates for prediction markets.
