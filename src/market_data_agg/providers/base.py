@@ -1,0 +1,78 @@
+"""Abstract base class for market data providers."""
+from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from datetime import datetime
+
+from market_data_agg.schemas import MarketQuote, StreamMessage
+
+
+class MarketProvider(ABC):
+    """Base interface for all market data providers.
+
+    Each market data provider implements this interface
+    to provide a unified way to fetch quotes, historical data, and real-time streams.
+    """
+
+    @abstractmethod
+    async def get_quote(self, symbol: str) -> MarketQuote:
+        """Fetch the current quote for a symbol.
+
+        Args:
+            symbol: The asset symbol (e.g., "AAPL", "BTC", "event-slug").
+
+        Returns:
+            A MarketQuote with the current price/value.
+        """
+
+    @abstractmethod
+    async def get_history(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> list[MarketQuote]:
+        """Fetch historical quotes for a symbol within a time range.
+
+        Args:
+            symbol: The asset symbol.
+            start: Start of the time range (inclusive).
+            end: End of the time range (inclusive).
+
+        Returns:
+            A list of MarketQuotes ordered by timestamp.
+        """
+
+    @abstractmethod
+    async def stream(self, symbols: list[str]) -> AsyncIterator[StreamMessage]:
+        """Subscribe to real-time updates for the given symbols.
+
+        This is an async generator that yields StreamMessage objects
+        as updates arrive from the provider's WebSocket.
+
+        Args:
+            symbols: List of symbols to subscribe to.
+
+        Yields:
+            StreamMessage objects with real-time price updates.
+        """
+        # This yield is needed to make this an async generator in the ABC
+        yield  # type: ignore[misc]
+
+    @abstractmethod
+    async def refresh(self) -> None:
+        """Force refresh or reconnect.
+
+        Use this to re-establish connections, clear caches, or
+        re-authenticate with the provider.
+        """
+
+    async def close(self) -> None:
+        """Clean up resources (connections, clients).
+
+        Override in subclasses if cleanup is needed.
+        """
+
+    async def __aenter__(self) -> "MarketProvider":
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: ANN001
+        """Async context manager exit - calls close()."""
+        await self.close()
