@@ -6,13 +6,8 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 
-from market_data_agg.routers import (
-    crypto_router,
-    markets_router,
-    polymarket_router,
-    stream_router,
-    stocks_router,
-)
+from market_data_agg.routers import (crypto_router, markets_router,
+                                     polymarket_router, stocks_router)
 
 app = FastAPI(
     title="Market Data Aggregator",
@@ -25,7 +20,7 @@ app.include_router(stocks_router)
 app.include_router(crypto_router)
 app.include_router(polymarket_router)
 app.include_router(markets_router)
-app.include_router(stream_router)
+
 
 
 @app.get("/")
