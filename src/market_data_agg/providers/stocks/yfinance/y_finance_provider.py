@@ -169,22 +169,23 @@ class YFinanceProvider(MarketProviderABC):
         """
         normalized = [normalize_stock_symbol(s) for s in symbols]
 
-        async def fetch_batch(syms: list[str]) -> list[MarketQuote]:
-            results = await asyncio.gather(
-                *[self.get_quote(s) for s in syms],
-                return_exceptions=True,
-            )
-            return [q for q in results if isinstance(q, MarketQuote)]
-
         async for quote in stream_by_polling(
             self,
             normalized,
             self._poll_interval,
-            fetch_batch,
+            self._fetch_stream_batch,
             dedup_by_value=True,
             stop_event=stop_event,
         ):
             yield quote
+
+    async def _fetch_stream_batch(self, syms: list[str]) -> list[MarketQuote]:
+        """Fetch quotes for the given symbols (used by stream)."""
+        results = await asyncio.gather(
+            *[self.get_quote(s) for s in syms],
+            return_exceptions=True,
+        )
+        return [q for q in results if isinstance(q, MarketQuote)]
 
     async def refresh(self) -> None:
         """Force refresh - no-op for yfinance provider."""

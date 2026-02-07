@@ -152,32 +152,33 @@ class CoinGeckoProvider(MarketProviderABC):
         """
         coin_ids = [normalize_crypto_id(s) for s in symbols]
 
-        async def fetch_batch(syms: list[str]) -> list[MarketQuote]:
-            ids = [normalize_crypto_id(s) for s in syms]
-            params = CoinGeckoStreamPriceParams().model_dump() | {
-                "ids": ",".join(ids),
-            }
-            response = await self._client.get("/simple/price", params=params)
-            response.raise_for_status()
-            data = response.json()
-            out: list[MarketQuote] = []
-            for cid in ids:
-                if cid not in data:
-                    continue
-                row = data[cid]
-                if row and row.get("usd") is not None:
-                    out.append(self._quote_from_simple_price(cid, row))
-            return out
-
         async for quote in stream_by_polling(
             self,
             coin_ids,
             self._poll_interval,
-            fetch_batch,
+            self._fetch_stream_batch,
             dedup_by_value=True,
             stop_event=stop_event,
         ):
             yield quote
+
+    async def _fetch_stream_batch(self, syms: list[str]) -> list[MarketQuote]:
+        """Fetch quotes for the given symbols (used by stream)."""
+        ids = [normalize_crypto_id(s) for s in syms]
+        params = CoinGeckoStreamPriceParams().model_dump() | {
+            "ids": ",".join(ids),
+        }
+        response = await self._client.get("/simple/price", params=params)
+        response.raise_for_status()
+        data = response.json()
+        out: list[MarketQuote] = []
+        for cid in ids:
+            if cid not in data:
+                continue
+            row = data[cid]
+            if row and row.get("usd") is not None:
+                out.append(self._quote_from_simple_price(cid, row))
+        return out
 
     async def refresh(self) -> None:
         """Force refresh - no-op for REST-based provider."""

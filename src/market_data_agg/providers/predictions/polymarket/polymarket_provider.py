@@ -64,6 +64,10 @@ class PolymarketProvider(PredictionsProviderABC):
         """Fetch active prediction markets for overview."""
         return await self.list_markets(active=True, limit=5)
 
+    async def _fetch_stream_batch(self, syms: list[str]) -> list[MarketQuote]:
+        """Fetch quotes for the given symbols (used by stream)."""
+        return [await self.get_quote(s) for s in syms]
+
     async def stream(
         self,
         symbols: list[str],
@@ -79,14 +83,11 @@ class PolymarketProvider(PredictionsProviderABC):
         Yields:
             MarketQuote from get_quote for each symbol, every poll_interval seconds.
         """
-        async def fetch_all(syms: list[str]) -> list[MarketQuote]:
-            return [await self.get_quote(s) for s in syms]
-
         async for quote in stream_by_polling(
             self,
             symbols,
             self._poll_interval_seconds,
-            fetch_all,
+            self._fetch_stream_batch,
             dedup_by_value=False,
             stop_event=stop_event,
         ):
