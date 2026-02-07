@@ -5,7 +5,7 @@ Includes routes for:
 - /crypto - Cryptocurrency data (CoinGecko)
 - /predictions - Prediction markets (Polymarket)
 - /markets - Aggregated views across all sources
-- /ws/stream - WebSocket real-time stream
+- /stocks/stream, /crypto/stream, /predictions/stream - WebSocket real-time streams (per provider)
 """
 from market_data_agg.routers.crypto import router as crypto_router
 from market_data_agg.routers.markets import router as markets_router

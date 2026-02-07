@@ -19,8 +19,8 @@ from market_data_agg.schemas import MarketQuote
 class PolymarketMarketDTO(BaseModel):
     """DTO for a market from Polymarket's Gamma API.
 
-    Only fields needed for MarketQuote (symbol, value, volume, timestamp) and
-    for stream (clob_token_ids). Extra API keys are ignored (Pydantic default).
+    Only fields needed for MarketQuote (symbol, value, volume, timestamp, metadata).
+    Extra API keys are ignored (Pydantic default).
 
     Decorators: @computed_field = include in dump/schema; @property = access as attribute.
     """
@@ -170,17 +170,3 @@ class PolymarketEventDTO(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     markets: list[PolymarketMarketDTO] = Field(default_factory=list)
-
-
-class PolymarketPriceUpdateDTO(BaseModel):
-    """Price update from CLOB WebSocket (for stream)."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
-
-    event_type: str
-    asset_id: str | None = None
-    price: str | float | None = None
-    timestamp: str | int | None = None
-    price_changes: list[dict] | None = None
-    price_changes: list[dict] | None = None
-    price_changes: list[dict] | None = None

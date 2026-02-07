@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from market_data_agg.dependencies import get_crypto_provider
 from market_data_agg.providers import MarketProviderABC
@@ -23,6 +23,33 @@ from market_data_agg.schemas import MarketQuote
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
+
+@router.websocket("/stream")
+async def stream_crypto(websocket: WebSocket) -> None:
+    """Stream real-time crypto quotes over WebSocket.
+
+    Uses the crypto provider's polling-based stream. Pass symbols as query param:
+    /crypto/stream?symbols=bitcoin,ethereum,solana
+    Each message is a MarketQuote JSON (source=crypto).
+    """
+    await websocket.accept()
+    symbols_param = (websocket.query_params.get("symbols") or "").strip()
+    symbol_list = [s.strip().lower() for s in symbols_param.split(",") if s.strip()]
+    if not symbol_list:
+        await websocket.close(code=4000, reason="Query param 'symbols' required (e.g. ?symbols=bitcoin,ethereum)")
+        return
+    provider = websocket.scope["app"].state.crypto_provider
+    try:
+        async for quote in provider.stream(symbol_list):
+            await websocket.send_json(quote.model_dump(mode="json"))
+    except WebSocketDisconnect:
+        logger.debug("Crypto stream client disconnected")
+    except Exception as exc:
+        logger.exception("Crypto stream error: %s", exc)
+        try:
+            await websocket.close(code=1011, reason="Stream error")
+        except Exception:
+            pass
 
 
 @router.get("/overview", response_model=list[MarketQuote])

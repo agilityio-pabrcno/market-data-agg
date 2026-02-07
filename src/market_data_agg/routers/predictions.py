@@ -13,7 +13,8 @@ import asyncio
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import (APIRouter, Depends, HTTPException, Query, WebSocket,
+                     WebSocketDisconnect)
 
 from market_data_agg.dependencies import get_predictions_provider
 from market_data_agg.providers import PredictionsProviderABC
@@ -22,7 +23,38 @@ from market_data_agg.schemas import MarketQuote
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
-# Route order: /overview before /markets so the overview endpoint is matched first.
+# Route order: /overview and /stream before /markets so they are matched first.
+
+
+@router.websocket("/stream")
+async def stream_predictions(websocket: WebSocket) -> None:
+    """Stream real-time prediction market quotes over WebSocket.
+
+    Uses the predictions provider's CLOB WebSocket. Pass market slugs as query param:
+    /predictions/stream?symbols=microstrategy-sell-any-bitcoin-in-2025,will-bitcoin-hit-100k
+    Each message is a MarketQuote JSON (source=events).
+    """
+    await websocket.accept()
+    symbols_param = (websocket.query_params.get("symbols") or "").strip()
+    symbol_list = [s.strip() for s in symbols_param.split(",") if s.strip()]
+    if not symbol_list:
+        await websocket.close(
+            code=4000,
+            reason="Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
+        )
+        return
+    provider = websocket.scope["app"].state.predictions_provider
+    try:
+        async for quote in provider.stream(symbol_list):
+            await websocket.send_json(quote.model_dump(mode="json"))
+    except WebSocketDisconnect:
+        logger.debug("Predictions stream client disconnected")
+    except Exception as exc:
+        logger.exception("Predictions stream error: %s", exc)
+        try:
+            await websocket.close(code=1011, reason="Stream error")
+        except Exception:
+            pass
 
 
 @router.get("/overview", response_model=list[MarketQuote])
@@ -120,4 +152,6 @@ async def refresh_predictions(
         return {"status": "refreshed"}
     except Exception as exc:
         logger.exception("Failed to refresh predictions provider")
+        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
+        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
         raise HTTPException(status_code=500, detail="Failed to refresh") from exc

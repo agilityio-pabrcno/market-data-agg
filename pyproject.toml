@@ -41,7 +41,6 @@ build-backend = "poetry.core.masonry.api"
 dev = "market_data_agg.main:run_dev"
 db-generate = "market_data_agg.db.cli:generate"
 db-migrate = "market_data_agg.db.cli:migrate"
-test-routers = "market_data_agg.cli.test_routers:main"
 
 [tool.pylint.MASTER]
 init-hook = 'import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd() / "src"))'
