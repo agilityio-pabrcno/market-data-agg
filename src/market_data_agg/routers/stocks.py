@@ -6,7 +6,7 @@ this router should only call the service and return responses.
 # TODO: Introduce a stocks service layer: move get_quote, get_history,
 #       get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
-# TODO: Consider API gateway (rate limiting, routing) in front of routers.
+# TODO: API gateway (rate limiting, routing) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
 from datetime import datetime, timedelta
@@ -19,8 +19,6 @@ from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# Route order: /overview must be declared before /{symbol} so "overview" is not matched as a symbol.
-
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_stocks_overview(
@@ -30,7 +28,7 @@ async def get_stocks_overview(
 
     Returns the provider's default set of top stocks.
     """
-    # Service layer will own: calling provider.get_overview_quotes() and error handling.
+    # TODO: Service layer will own: calling provider.get_overview_quotes() and error handling.
     try:
         return await provider.get_overview_quotes()
     except Exception as e:
@@ -50,7 +48,7 @@ async def get_stock_quote(
     Returns:
         Current market quote with price and metadata.
     """
-    # Service layer will own: get_quote(symbol), normalization, and 404 mapping.
+    # TODO: Service layer will own: get_quote(symbol), normalization, and 404 mapping.
     try:
         return await provider.get_quote(symbol.upper())
     except Exception as e:
@@ -72,7 +70,7 @@ async def get_stock_history(
     Returns:
         List of historical quotes ordered by timestamp.
     """
-    # Service layer will own: date range (days → start/end), get_history(), and error mapping.
+    # TODO: Service layer will own: date range (days → start/end), get_history(), and error mapping.
     end = datetime.utcnow()
     start = end - timedelta(days=days)
 
@@ -90,6 +88,6 @@ async def refresh_stocks(
 
     No-op for YFinance (no persistent connections or cache).
     """
-    # Service layer will own: refresh orchestration and response shape.
+    # TODO: Service layer will own: refresh orchestration and response shape.
     await provider.refresh()
     return {"status": "refreshed"}

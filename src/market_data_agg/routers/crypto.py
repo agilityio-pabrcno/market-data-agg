@@ -23,7 +23,6 @@ from market_data_agg.schemas import MarketQuote
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
-# Route order: /overview must be declared before /{symbol} so "overview" is not matched as a symbol.
 
 
 @router.get("/overview", response_model=list[MarketQuote])
@@ -34,7 +33,7 @@ async def get_crypto_overview(
 
     Returns the provider's default set of top cryptocurrencies.
     """
-    # Service layer will own: calling provider.get_overview_quotes() and error handling.
+    # TODO: Move calling provider.get_overview_quotes() and error handling to service layer.
     try:
         return await provider.get_overview_quotes()
     except httpx.HTTPStatusError as e:
@@ -61,7 +60,7 @@ async def get_crypto_quote(
     Returns:
         Current market quote with price and metadata.
     """
-    # Service layer will own: get_quote(symbol), normalization, and HTTP error mapping.
+    # TODO: Move get_quote(symbol), normalization, and HTTP error mapping to service layer.
     try:
         return await provider.get_quote(symbol)
     except ValueError as e:
@@ -90,7 +89,7 @@ async def get_crypto_history(
     Returns:
         List of historical quotes ordered by timestamp.
     """
-    # Service layer will own: date range (days → start/end), get_history(), and error mapping.
+    # TODO: Move date range (days → start/end), get_history(), and error mapping to service layer.
     end = datetime.utcnow()
     start = end - timedelta(days=days)
 
@@ -118,7 +117,7 @@ async def refresh_crypto(
 
     Clears any cached data.
     """
-    # Service layer will own: refresh orchestration and response shape.
+    # TODO: Move refresh orchestration and response shape to service layer.
     try:
         await provider.refresh()
         return {"status": "refreshed"}

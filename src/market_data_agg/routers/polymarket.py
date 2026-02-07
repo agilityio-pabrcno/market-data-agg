@@ -6,7 +6,7 @@ this router should only call the service and return responses.
 # TODO: Introduce a predictions/polymarket service layer: move list_markets,
 #       get_quote, get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
-# TODO: Consider API gateway (rate limiting, routing) in front of routers.
+# TODO:  API gateway (rate limiting, routing) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
 import asyncio
@@ -33,7 +33,7 @@ async def get_polymarket_overview(
 
     Returns the provider's default set of active markets for summary views.
     """
-    # Service layer will own: calling provider.get_overview_quotes() and error handling.
+    # TODO: Service layer will own: calling provider.get_overview_quotes() and error handling.
     try:
         return await provider.get_overview_quotes()
     except httpx.HTTPStatusError as e:
@@ -63,7 +63,7 @@ async def list_markets(
     Returns:
         List of prediction markets as MarketQuotes.
     """
-    # Service layer will own: list_markets(active, limit, tag_id) and error mapping.
+    # TODO: Service layer will own: list_markets(active, limit, tag_id) and error mapping.
     try:
         return await provider.list_markets(active=active, limit=limit, tag_id=tag_id)
     except httpx.HTTPStatusError as e:
@@ -89,7 +89,7 @@ async def get_market(
     Returns:
         Market quote with probability and metadata.
     """
-    # Service layer will own: get_quote(market_id) and 404/5xx mapping.
+    # TODO: Service layer will own: get_quote(market_id) and 404/5xx mapping.
     try:
         return await provider.get_quote(market_id)
     except ValueError as e:
@@ -114,7 +114,7 @@ async def refresh_polymarket(
 
     Clears cached market data and reconnects WebSocket.
     """
-    # Service layer will own: refresh orchestration and response shape.
+    # TODO: Service layer will own: refresh orchestration and response shape.
     try:
         await provider.refresh()
         return {"status": "refreshed"}

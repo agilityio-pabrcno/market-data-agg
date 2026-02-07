@@ -8,7 +8,7 @@ the service and return responses.
 #       flatten), top-movers (gather by source, sort by change_24h), and any
 #       future aggregation logic there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
-# TODO: Consider API gateway (rate limiting, routing) in front of routers.
+# TODO:  API gateway (rate limiting, routing) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
 import asyncio
@@ -26,8 +26,6 @@ from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
-# Routes are static (/overview, /top-movers); no path params, so order is flexible.
-
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_market_overview(
@@ -39,7 +37,7 @@ async def get_market_overview(
 
     Returns a snapshot of each provider's main/top quotes (stocks, crypto, prediction markets).
     """
-    # Service layer will own: asyncio.gather of all three get_overview_quotes(), flatten, and error handling.
+    # TODO: Move this logic to a markets service layer.
     stocks, crypto, predictions = await asyncio.gather(
         stocks_provider.get_overview_quotes(),
         crypto_provider.get_overview_quotes(),
@@ -48,8 +46,9 @@ async def get_market_overview(
     return list(stocks) + list(crypto) + list(predictions)
 
 
-# Service layer will own this helper (sort key for 24h change).
 def _change_24h(q: MarketQuote) -> float:
+    """Helper for sorting by 24h change."""
+    # TODO: Move this logic to a markets service layer.
     if q.metadata and "change_24h" in q.metadata:
         val = q.metadata["change_24h"]
         return abs(val) if val is not None else 0.0
@@ -68,7 +67,7 @@ async def get_top_movers(
 
     Uses each provider's overview quotes; sorts by absolute 24h change.
     """
-    # Service layer will own: source-based gather (or single provider), _change_24h sort, and limit.
+    # TODO: Move this logic to a markets service layer.
     if source is None:
         stocks, crypto, predictions = await asyncio.gather(
             stocks_provider.get_overview_quotes(),
