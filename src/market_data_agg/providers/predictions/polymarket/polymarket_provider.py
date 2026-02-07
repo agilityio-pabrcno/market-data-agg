@@ -1,18 +1,15 @@
 """Polymarket data provider for prediction markets."""
-import asyncio
-import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
-from market_data_agg.providers.predictions.polymarket.dto import (
+from market_data_agg.providers.core.stream_helpers import stream_by_polling
+from market_data_agg.providers.predictions.polymarket.polymarket_dto import (
     PolymarketEventDTO, PolymarketMarketDTO)
 from market_data_agg.providers.predictions.predictions_provider_abc import \
     PredictionsProviderABC
 from market_data_agg.schemas import MarketQuote
-
-logger = logging.getLogger(__name__)
 
 
 class PolymarketProvider(PredictionsProviderABC):
@@ -73,22 +70,19 @@ class PolymarketProvider(PredictionsProviderABC):
             symbols: List of market slugs.
 
         Yields:
-            MarketQuote from get_quote for each symbol, every 5 seconds (or poll_interval).
+            MarketQuote from get_quote for each symbol, every poll_interval seconds.
         """
-        if not symbols:
-            return
-        self._streaming = True
-        try:
-            while self._streaming:
-                for symbol in symbols:
-                    try:
-                        quote = await self.get_quote(symbol)
-                        yield quote
-                    except (ValueError, httpx.HTTPStatusError) as e:
-                        logger.warning("Stream skip %r: %s", symbol, e)
-                await asyncio.sleep(self._poll_interval_seconds)
-        finally:
-            self._streaming = False
+        async def fetch_all(syms: list[str]) -> list[MarketQuote]:
+            return [await self.get_quote(s) for s in syms]
+
+        async for quote in stream_by_polling(
+            self,
+            symbols,
+            self._poll_interval_seconds,
+            fetch_all,
+            dedup_by_value=False,
+        ):
+            yield quote
 
     async def list_markets(
         self,

@@ -27,6 +27,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# TODO: Add middlewares for API gateway (auth, request ID, CORS).
+# TODO: Add rate limiting middleware (e.g. slowapi or custom per-route limits).
+
 # Include routers
 app.include_router(stocks_router)
 app.include_router(crypto_router)

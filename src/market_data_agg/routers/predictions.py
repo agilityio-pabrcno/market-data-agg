@@ -1,81 +1,35 @@
 """Prediction market routes (Polymarket provider).
 
-List/get/overview/refresh logic will live in a predictions service layer;
-this router should only call the service and return responses.
+Thin HTTP handlers; business logic and error mapping live in PredictionsService.
 """
-# TODO: Introduce a predictions service layer: move list_markets,
-#       get_quote, get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
-# TODO: Add middleware for request logging, metrics, and correlation IDs.
-# TODO:  API gateway (rate limiting, routing) in front of routers.
-# TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
-# TODO: Improve error handling: central exception handler, structured error responses, retries.
-import asyncio
-import logging
-
-import httpx
-from fastapi import (APIRouter, Depends, HTTPException, Query, WebSocket,
-                     WebSocketDisconnect)
-
-from market_data_agg.dependencies import get_predictions_provider
-from market_data_agg.providers import PredictionsProviderABC
-from market_data_agg.schemas import MarketQuote
-
-logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/predictions", tags=["predictions"])
-
 # Route order: /overview and /stream before /markets so they are matched first.
+
+from fastapi import APIRouter, Depends, Query, WebSocket
+
+from market_data_agg.dependencies import get_predictions_service
+from market_data_agg.schemas import MarketQuote
+from market_data_agg.services import PredictionsService
+
+router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 
 @router.websocket("/stream")
 async def stream_predictions(websocket: WebSocket) -> None:
-    """Stream real-time prediction market quotes over WebSocket.
-
-    Uses the predictions provider's CLOB WebSocket. Pass market slugs as query param:
-    /predictions/stream?symbols=microstrategy-sell-any-bitcoin-in-2025,will-bitcoin-hit-100k
-    Each message is a MarketQuote JSON (source=events).
-    """
-    await websocket.accept()
-    symbols_param = (websocket.query_params.get("symbols") or "").strip()
-    symbol_list = [s.strip() for s in symbols_param.split(",") if s.strip()]
-    if not symbol_list:
-        await websocket.close(
-            code=4000,
-            reason="Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
-        )
-        return
-    provider = websocket.scope["app"].state.predictions_provider
-    try:
-        async for quote in provider.stream(symbol_list):
-            await websocket.send_json(quote.model_dump(mode="json"))
-    except WebSocketDisconnect:
-        logger.debug("Predictions stream client disconnected")
-    except Exception as exc:
-        logger.exception("Predictions stream error: %s", exc)
-        try:
-            await websocket.close(code=1011, reason="Stream error")
-        except Exception:
-            pass
+    """Stream real-time prediction market quotes. Query param: ?symbols=market-slug-1,market-slug-2"""
+    app = websocket.scope["app"]
+    service = PredictionsService(app.state.predictions_provider)
+    await service.handle_websocket_stream(
+        websocket,
+        "Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
+    )
 
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_predictions_overview(
-    provider: PredictionsProviderABC = Depends(get_predictions_provider),
+    service: PredictionsService = Depends(get_predictions_service),
 ) -> list[MarketQuote]:
-    """Get overview (active) prediction markets.
-
-    Returns the provider's default set of active markets for summary views.
-    """
-    # TODO: Service layer will own: calling provider.get_overview_quotes() and error handling.
-    try:
-        return await provider.get_overview_quotes()
-    except httpx.HTTPStatusError as e:
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Predictions API error") from e
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
-    except Exception as exc:
-        logger.exception("Failed to fetch predictions overview")
-        raise HTTPException(status_code=500, detail="Failed to fetch overview") from exc
+    """Get overview (active) prediction markets."""
+    return await service.get_overview_quotes()
 
 
 @router.get("/markets", response_model=list[MarketQuote])
@@ -83,75 +37,25 @@ async def list_markets(
     active: bool = Query(default=True, description="Filter for active markets only"),
     limit: int = Query(default=50, ge=1, le=100, description="Maximum markets to return"),
     tag_id: str | None = Query(default=None, description="Filter by tag/category ID"),
-    provider: PredictionsProviderABC = Depends(get_predictions_provider),
+    service: PredictionsService = Depends(get_predictions_service),
 ) -> list[MarketQuote]:
-    """List available prediction markets.
-
-    Args:
-        active: Filter for active (tradeable) markets only.
-        limit: Maximum number of markets to return.
-        tag_id: Optional category filter (e.g., crypto, politics, sports).
-
-    Returns:
-        List of prediction markets as MarketQuotes.
-    """
-    # TODO: Service layer will own: list_markets(active, limit, tag_id) and error mapping.
-    try:
-        return await provider.list_markets(active=active, limit=limit, tag_id=tag_id)
-    except httpx.HTTPStatusError as e:
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Predictions API error")
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
-    except Exception as exc:
-        logger.exception("Failed to fetch predictions markets")
-        raise HTTPException(status_code=500, detail="Failed to fetch markets") from exc
+    """List available prediction markets (active, limit, optional tag_id)."""
+    return await service.list_markets(active=active, limit=limit, tag_id=tag_id)
 
 
 @router.get("/markets/{market_id}", response_model=MarketQuote)
 async def get_market(
     market_id: str,
-    provider: PredictionsProviderABC = Depends(get_predictions_provider),
+    service: PredictionsService = Depends(get_predictions_service),
 ) -> MarketQuote:
-    """Get details for a specific prediction market.
-
-    Args:
-        market_id: Market slug (e.g., "will-bitcoin-reach-100k") or condition ID.
-
-    Returns:
-        Market quote with probability and metadata.
-    """
-    # TODO: Service layer will own: get_quote(market_id) and 404/5xx mapping.
-    try:
-        return await provider.get_quote(market_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"Market '{market_id}' not found")
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Predictions API error")
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
-    except Exception as exc:
-        logger.exception("Failed to fetch predictions market %s", market_id)
-        raise HTTPException(status_code=500, detail="Failed to fetch market") from exc
+    """Get details for a specific prediction market (slug or condition ID)."""
+    return await service.get_quote(market_id)
 
 
 @router.post("/refresh")
 async def refresh_predictions(
-    provider: PredictionsProviderABC = Depends(get_predictions_provider),
+    service: PredictionsService = Depends(get_predictions_service),
 ) -> dict[str, str]:
-    """Force refresh the predictions provider.
-
-    Clears cached market data and reconnects WebSocket.
-    """
-    # TODO: Service layer will own: refresh orchestration and response shape.
-    try:
-        await provider.refresh()
-        return {"status": "refreshed"}
-    except Exception as exc:
-        logger.exception("Failed to refresh predictions provider")
-        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
-        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
-        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
+    """Force refresh the predictions provider."""
+    await service.refresh()
+    return {"status": "refreshed"}

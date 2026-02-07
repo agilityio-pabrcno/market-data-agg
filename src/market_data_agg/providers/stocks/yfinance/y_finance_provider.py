@@ -7,6 +7,7 @@ import yfinance as yf
 
 from market_data_agg.db import Source
 from market_data_agg.providers.core import MarketProviderABC, round2
+from market_data_agg.providers.core.stream_helpers import stream_by_polling
 from market_data_agg.providers.stocks.yfinance.models import YFinanceBarMetadata
 from market_data_agg.schemas import MarketQuote
 
@@ -162,27 +163,23 @@ class YFinanceProvider(MarketProviderABC):
         Yields:
             MarketQuote objects with price updates.
         """
-        self._streaming = True
         normalized = [self._normalize_symbol(s) for s in symbols]
-        last_prices: dict[str, float] = {}
 
-        try:
-            while self._streaming:
-                results = await asyncio.gather(
-                    *[self.get_quote(s) for s in normalized],
-                    return_exceptions=True,
-                )
-                for q in results:
-                    if not isinstance(q, MarketQuote):
-                        continue
-                    if last_prices.get(q.symbol) == q.value:
-                        continue
-                    last_prices[q.symbol] = q.value
-                    yield q
+        async def fetch_batch(syms: list[str]) -> list[MarketQuote]:
+            results = await asyncio.gather(
+                *[self.get_quote(s) for s in syms],
+                return_exceptions=True,
+            )
+            return [q for q in results if isinstance(q, MarketQuote)]
 
-                await asyncio.sleep(self._poll_interval)
-        finally:
-            self._streaming = False
+        async for quote in stream_by_polling(
+            self,
+            normalized,
+            self._poll_interval,
+            fetch_batch,
+            dedup_by_value=True,
+        ):
+            yield quote
 
     async def refresh(self) -> None:
         """Force refresh - no-op for yfinance provider."""

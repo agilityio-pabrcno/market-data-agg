@@ -1,157 +1,58 @@
 """Cryptocurrency market data routes (CoinGecko).
 
-Quote/history/overview/refresh logic will live in a crypto service layer;
-this router should only call the service and return responses.
+Thin HTTP handlers; business logic and error mapping live in CryptoService.
 """
-# TODO: Introduce a crypto service layer: move get_quote, get_history,
-#       get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
-# TODO: Add middleware for request logging, metrics, and correlation IDs.
-# TODO: Add API gateway (rate limiting) in front of routers.
-# TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
-# TODO: Improve error handling: central exception handler, structured error responses, retries.
-import asyncio
-import logging
-from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, Query, WebSocket
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
-
-from market_data_agg.dependencies import get_crypto_provider
-from market_data_agg.providers import MarketProviderABC
+from market_data_agg.dependencies import get_crypto_service
 from market_data_agg.schemas import MarketQuote
+from market_data_agg.services import CryptoService
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
 
 @router.websocket("/stream")
 async def stream_crypto(websocket: WebSocket) -> None:
-    """Stream real-time crypto quotes over WebSocket.
-
-    Uses the crypto provider's polling-based stream. Pass symbols as query param:
-    /crypto/stream?symbols=bitcoin,ethereum,solana
-    Each message is a MarketQuote JSON (source=crypto).
-    """
-    await websocket.accept()
-    symbols_param = (websocket.query_params.get("symbols") or "").strip()
-    symbol_list = [s.strip().lower() for s in symbols_param.split(",") if s.strip()]
-    if not symbol_list:
-        await websocket.close(code=4000, reason="Query param 'symbols' required (e.g. ?symbols=bitcoin,ethereum)")
-        return
-    provider = websocket.scope["app"].state.crypto_provider
-    try:
-        async for quote in provider.stream(symbol_list):
-            await websocket.send_json(quote.model_dump(mode="json"))
-    except WebSocketDisconnect:
-        logger.debug("Crypto stream client disconnected")
-    except Exception as exc:
-        logger.exception("Crypto stream error: %s", exc)
-        try:
-            await websocket.close(code=1011, reason="Stream error")
-        except Exception:
-            pass
+    """Stream real-time crypto quotes. Query param: ?symbols=bitcoin,ethereum,solana"""
+    app = websocket.scope["app"]
+    service = CryptoService(app.state.crypto_provider)
+    await service.handle_websocket_stream(
+        websocket,
+        "Query param 'symbols' required (e.g. ?symbols=bitcoin,ethereum)",
+    )
 
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_crypto_overview(
-    provider: MarketProviderABC = Depends(get_crypto_provider),
+    service: CryptoService = Depends(get_crypto_service),
 ) -> list[MarketQuote]:
-    """Get overview (top by market cap) crypto quotes.
-
-    Returns the provider's default set of top cryptocurrencies.
-    """
-    # TODO: Move calling provider.get_overview_quotes() and error handling to service layer.
-    try:
-        return await provider.get_overview_quotes()
-    except httpx.HTTPStatusError as e:
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="CoinGecko API error") from e
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to CoinGecko timed out")
-    except Exception as exc:
-        logger.exception("Failed to fetch crypto overview")
-        raise HTTPException(status_code=500, detail="Failed to fetch overview") from exc
+    """Get overview (top by market cap) crypto quotes."""
+    return await service.get_overview_quotes()
 
 
 @router.get("/{symbol}", response_model=MarketQuote)
 async def get_crypto_quote(
     symbol: str,
-    provider: MarketProviderABC = Depends(get_crypto_provider),
+    service: CryptoService = Depends(get_crypto_service),
 ) -> MarketQuote:
-    """Get the current quote for a cryptocurrency.
+    """Get the current quote for a cryptocurrency (CoinGecko ID, e.g. bitcoin, ethereum)."""
+    return await service.get_quote(symbol)
 
-    Args:
-        symbol: CoinGecko ID (e.g., "bitcoin", "ethereum", "solana").
-            See https://api.coingecko.com/api/v3/coins/list for all IDs.
-
-    Returns:
-        Current market quote with price and metadata.
-    """
-    # TODO: Move get_quote(symbol), normalization, and HTTP error mapping to service layer.
-    try:
-        return await provider.get_quote(symbol)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"Crypto '{symbol}' not found") from e
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="CoinGecko API error") from e
-    except (KeyError, TypeError) as e:
-        raise HTTPException(status_code=404, detail=f"Crypto '{symbol}' not found") from e
-    except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail=f"Request to CoinGecko timed out for '{symbol}'") from exc
-    except Exception as exc:
-        logger.exception("Failed to fetch crypto quote for %s", symbol)
-        raise HTTPException(status_code=500, detail="Failed to fetch quote") from exc
 
 @router.get("/{symbol}/history", response_model=list[MarketQuote])
 async def get_crypto_history(
     symbol: str,
     days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
-    provider: MarketProviderABC = Depends(get_crypto_provider),
+    service: CryptoService = Depends(get_crypto_service),
 ) -> list[MarketQuote]:
-    """Get historical data for a cryptocurrency.
-
-    Args:
-        symbol: CoinGecko ID.
-        days: Number of days of history (default: 30, max: 365).
-
-    Returns:
-        List of historical quotes ordered by timestamp.
-    """
-    # TODO: Move date range (days → start/end), get_history(), and error mapping to service layer.
-    end = datetime.utcnow()
-    start = end - timedelta(days=days)
-
-    try:
-        return await provider.get_history(symbol, start, end)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"History for '{symbol}' not found")
-        status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="CoinGecko API error")
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to CoinGecko timed out")
-    except Exception as exc:
-        logger.exception("Failed to fetch crypto history for %s", symbol)
-        raise HTTPException(status_code=500, detail="Failed to fetch history") from exc
+    """Get historical data for a cryptocurrency."""
+    return await service.get_history(symbol, days)
 
 
 @router.post("/refresh")
 async def refresh_crypto(
-    provider: MarketProviderABC = Depends(get_crypto_provider),
+    service: CryptoService = Depends(get_crypto_service),
 ) -> dict[str, str]:
-    """Force refresh the crypto data provider.
-
-    Clears any cached data.
-    """
-    # TODO: Move refresh orchestration and response shape to service layer.
-    try:
-        await provider.refresh()
-        return {"status": "refreshed"}
-    except Exception as exc:
-        logger.exception("Failed to refresh CoinGecko provider")
-        raise HTTPException(status_code=500, detail="Failed to refresh") from exc
+    """Force refresh the crypto data provider."""
+    await service.refresh()
+    return {"status": "refreshed"}

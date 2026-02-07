@@ -45,6 +45,21 @@ class PolymarketMarketDTO(BaseModel):
     # --- Parser: API often sends JSON arrays or comma-separated strings ---
 
     @staticmethod
+    def _raw_to_list(raw: str | list | None, allow_comma_split: bool) -> list:
+        """Normalize raw value to a list; empty list on None, invalid type, or parse error."""
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            return raw
+        s = raw.strip()
+        if allow_comma_split and not s.startswith("["):
+            return [x.strip() for x in s.split(",") if x.strip()]
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+
+    @staticmethod
     def _parse_raw_list(
         raw: str | list | None,
         *,
@@ -52,24 +67,8 @@ class PolymarketMarketDTO(BaseModel):
         allow_comma_split: bool = False,
     ) -> list:
         """Parse a field that may be None, a JSON array string, or already a list."""
-        if raw is None:
-            return []
-        if isinstance(raw, list):
-            arr = raw
-        elif isinstance(raw, str):
-            s = raw.strip()
-            if allow_comma_split and not s.startswith("["):
-                arr = [x.strip() for x in raw.split(",") if x.strip()]
-            else:
-                try:
-                    arr = json.loads(raw)
-                except json.JSONDecodeError:
-                    return []
-        else:
-            return []
-        if coerce_float:
-            return [float(p) for p in arr]
-        return [str(x) for x in arr]
+        arr = PolymarketMarketDTO._raw_to_list(raw, allow_comma_split)
+        return [float(p) for p in arr] if coerce_float else [str(x) for x in arr]
 
     # --- Compiled/parsed (exposed via @computed_field + @property) ---
 
