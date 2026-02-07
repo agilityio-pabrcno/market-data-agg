@@ -1,5 +1,6 @@
 """CoinGecko market data provider for cryptocurrencies."""
 import os
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -131,7 +132,12 @@ class CoinGeckoProvider(MarketProviderABC):
             for (ts_ms, price) in (p[:2] for p in prices)
         ]
 
-    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
+    async def stream(
+        self,
+        symbols: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
         """Stream real-time price updates via polling.
 
         CoinGecko WebSocket requires a paid plan, so this implementation
@@ -139,6 +145,7 @@ class CoinGeckoProvider(MarketProviderABC):
 
         Args:
             symbols: List of CoinGecko IDs to stream (e.g., ["bitcoin", "ethereum"]).
+            stop_event: When set, the polling loop exits (per-stream; safe for concurrent clients).
 
         Yields:
             MarketQuote objects with price updates.
@@ -168,6 +175,7 @@ class CoinGeckoProvider(MarketProviderABC):
             self._poll_interval,
             fetch_batch,
             dedup_by_value=True,
+            stop_event=stop_event,
         ):
             yield quote
 

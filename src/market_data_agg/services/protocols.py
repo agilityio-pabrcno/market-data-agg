@@ -1,4 +1,5 @@
 """Protocols for market data services."""
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Protocol
 
@@ -11,5 +12,10 @@ class QuoteStreamable(Protocol):
     Used by handle_websocket_stream for type-safe streaming.
     """
 
-    async def stream(self, symbol_list: list[str]) -> AsyncIterator[MarketQuote]:
+    async def stream(
+        self,
+        symbol_list: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
         """Stream real-time quotes for the given symbols."""

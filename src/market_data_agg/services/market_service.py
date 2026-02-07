@@ -2,14 +2,12 @@
 
 MarketService wraps any MarketProviderABC with error mapping and symbol normalization.
 Inject different provider + error mapper combinations for stocks, crypto, predictions.
-
-TODO: Improve error handling: catch specific exceptions (e.g. httpx, asyncio) before broad Exception.
-TODO: Add structured logging (e.g. logger.warning/error) before raising HTTPException.
-TODO: Consider retries with backoff for transient provider failures (e.g. 5xx, timeouts).
 """
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta
 
+import httpx
 from fastapi import WebSocket
 
 from market_data_agg.providers.core import (MarketProviderABC,
@@ -18,6 +16,17 @@ from market_data_agg.providers.core.protocols import ListMarketsProvider
 from market_data_agg.schemas import MarketQuote
 from market_data_agg.services.utils import (handle_websocket_stream,
                                             parse_symbols_param)
+
+# Exceptions from providers we map to HTTP; all others propagate (e.g. bugs, BaseException).
+_PROVIDER_EXCEPTIONS: tuple[type[Exception], ...] = (
+    ValueError,
+    KeyError,
+    TypeError,
+    TimeoutError,
+    OSError,
+    asyncio.TimeoutError,
+    httpx.HTTPStatusError,
+)
 
 
 class MarketService:
@@ -50,43 +59,51 @@ class MarketService:
 
     async def get_quote(self, symbol: str) -> MarketQuote:
         """Get current quote. Raises HTTPException on provider errors."""
-        # TODO: Validate symbol (e.g. non-empty, max length) before calling provider
         norm = self._normalize_symbol(symbol)
         try:
             return await self._provider.get_quote(norm)
-        except Exception as e:
+        except _PROVIDER_EXCEPTIONS as e:
             self._error_mapper.raise_http(e, symbol=symbol)
 
     async def get_overview_quotes(self) -> list[MarketQuote]:
         """Get overview quotes. Raises HTTPException on provider errors."""
         try:
             return await self._provider.get_overview_quotes()
-        except Exception as e:
+        except _PROVIDER_EXCEPTIONS as e:
             self._error_mapper.raise_http(e)
 
     async def get_history(self, symbol: str, days: int) -> list[MarketQuote]:
         """Get historical quotes. Raises HTTPException on provider errors."""
-        # TODO: Validate days (e.g. min/max range) and return 400 for invalid input
         norm = self._normalize_symbol(symbol)
         end = datetime.utcnow()
         start = end - timedelta(days=days)
         try:
             return await self._provider.get_history(norm, start, end)
-        except Exception as e:
+        except _PROVIDER_EXCEPTIONS as e:
             self._error_mapper.raise_http(e, symbol=symbol)
 
     async def refresh(self) -> None:
         """Force refresh the provider. Raises HTTPException on failure."""
         try:
             await self._provider.refresh()
-        except Exception as e:
+        except _PROVIDER_EXCEPTIONS as e:
             self._error_mapper.raise_http(e)
 
-    async def stream(self, symbol_list: list[str]) -> AsyncIterator[MarketQuote]:
-        """Stream real-time quotes for the given symbols."""
-        # TODO: Handle stream errors (e.g. provider disconnect) and yield or log instead of crashing
+    async def stream(
+        self,
+        symbol_list: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
+        """Stream real-time quotes for the given symbols.
+
+        Pass stop_event when streaming over WebSocket so one client disconnect
+        does not stop other clients (per-stream cancellation).
+        """
         normalized = [self._normalize_symbol(s) for s in symbol_list]
-        async for quote in self._provider.stream(normalized):
+        async for quote in self._provider.stream(
+            normalized, stop_event=stop_event
+        ):
             yield quote
 
     async def list_markets(
@@ -104,7 +121,7 @@ class MarketService:
             return await self._provider.list_markets(
                 active=active, limit=limit, tag_id=tag_id
             )
-        except Exception as e:
+        except _PROVIDER_EXCEPTIONS as e:
             self._error_mapper.raise_http(e, symbol=None)
 
     async def handle_websocket_stream(

@@ -5,9 +5,10 @@ from datetime import datetime
 
 import yfinance as yf
 
+from market_data_agg.providers.core.stream_helpers import stream_by_polling
+
 from market_data_agg.db import Source
 from market_data_agg.providers.core import MarketProviderABC, round2
-from market_data_agg.providers.core.stream_helpers import stream_by_polling
 from market_data_agg.providers.core.utils import normalize_stock_symbol
 from market_data_agg.providers.stocks.yfinance.models import \
     YFinanceBarMetadata
@@ -148,7 +149,12 @@ class YFinanceProvider(MarketProviderABC):
         sym = normalize_stock_symbol(symbol)
         return await asyncio.to_thread(self._fetch_history_sync, sym, start, end)
 
-    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
+    async def stream(
+        self,
+        symbols: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
         """Stream real-time price updates via polling.
 
         Yahoo Finance doesn't provide WebSocket support, so this
@@ -156,6 +162,7 @@ class YFinanceProvider(MarketProviderABC):
 
         Args:
             symbols: List of stock tickers to stream (e.g., ["AAPL", "MSFT"]).
+            stop_event: When set, the polling loop exits (per-stream; safe for concurrent clients).
 
         Yields:
             MarketQuote objects with price updates.
@@ -175,6 +182,7 @@ class YFinanceProvider(MarketProviderABC):
             self._poll_interval,
             fetch_batch,
             dedup_by_value=True,
+            stop_event=stop_event,
         ):
             yield quote
 

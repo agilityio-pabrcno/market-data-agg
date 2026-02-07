@@ -1,4 +1,5 @@
 """Abstract base class for market data providers."""
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -70,14 +71,22 @@ class MarketProviderABC(ABC):
         raise NotImplementedError("Historical data is not supported by this provider")
 
     @abstractmethod
-    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
+    async def stream(
+        self,
+        symbols: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
         """Subscribe to real-time updates for the given symbols.
 
         This is an async generator that yields MarketQuote objects
-        as updates arrive from the provider.
+        as updates arrive from the provider. When stop_event is provided,
+        the implementation should exit when stop_event.is_set() (per-stream
+        cancellation; safe for concurrent clients).
 
         Args:
             symbols: List of symbols to subscribe to.
+            stop_event: Optional event; when set, the stream should stop.
 
         Yields:
             MarketQuote objects with real-time price/value updates.

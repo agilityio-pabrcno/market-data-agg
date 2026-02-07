@@ -1,4 +1,5 @@
 """WebSocket stream handling: parse symbols and stream MarketQuotes from a service."""
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -31,14 +32,16 @@ async def handle_websocket_stream(
 ) -> None:
     """Accept WebSocket, validate symbols, then stream MarketQuotes from the service.
 
-    Service must implement stream(symbol_list: list[str]) -> AsyncIterator[MarketQuote].
+    Uses a per-connection stop_event so one client disconnect does not stop
+    other clients (safe with singleton providers).
     """
     await websocket.accept()
     if not symbol_list:
         await websocket.close(code=4000, reason=symbols_required_message)
         return
+    stop_event: asyncio.Event = asyncio.Event()
     try:
-        async for quote in service.stream(symbol_list):
+        async for quote in service.stream(symbol_list, stop_event=stop_event):
             if isinstance(quote, MarketQuote):
                 await websocket.send_json(quote.model_dump(mode="json"))
     except WebSocketDisconnect:
@@ -49,3 +52,5 @@ async def handle_websocket_stream(
             await websocket.close(code=1011, reason="Stream error")
         except Exception:
             pass
+    finally:
+        stop_event.set()

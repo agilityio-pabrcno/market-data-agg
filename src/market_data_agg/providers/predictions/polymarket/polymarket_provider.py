@@ -1,4 +1,5 @@
 """Polymarket data provider for prediction markets."""
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -63,11 +64,17 @@ class PolymarketProvider(PredictionsProviderABC):
         """Fetch active prediction markets for overview."""
         return await self.list_markets(active=True, limit=5)
 
-    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
+    async def stream(
+        self,
+        symbols: list[str],
+        *,
+        stop_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[MarketQuote]:
         """Stream quotes by polling get_quote for each symbol every poll_interval seconds.
 
         Args:
             symbols: List of market slugs.
+            stop_event: When set, the polling loop exits (per-stream; safe for concurrent clients).
 
         Yields:
             MarketQuote from get_quote for each symbol, every poll_interval seconds.
@@ -81,6 +88,7 @@ class PolymarketProvider(PredictionsProviderABC):
             self._poll_interval_seconds,
             fetch_all,
             dedup_by_value=False,
+            stop_event=stop_event,
         ):
             yield quote
 
