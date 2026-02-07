@@ -68,6 +68,10 @@ async def get_crypto_quote(
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Crypto '{symbol}' not found") from e
+        status = 502 if e.response.status_code >= 500 else e.response.status_code
+        raise HTTPException(status_code=status, detail="CoinGecko API error") from e
+    except (KeyError, TypeError) as e:
+        raise HTTPException(status_code=404, detail=f"Crypto '{symbol}' not found") from e
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail=f"Request to CoinGecko timed out for '{symbol}'") from exc
     except Exception as exc:

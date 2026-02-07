@@ -75,7 +75,11 @@ class CoinGeckoProvider(MarketProviderABC):
         if coin_id not in data:
             raise ValueError(f"Coin '{coin_id}' not found")
 
-        return self._quote_from_simple_price(coin_id, data[coin_id])
+        row = data[coin_id]
+        if not row or row.get("usd") is None:
+            raise ValueError(f"Coin '{coin_id}' not found")
+
+        return self._quote_from_simple_price(coin_id, row)
 
     async def get_overview_quotes(self) -> list[MarketQuote]:
         """Fetch top coins by market cap (single API call)."""

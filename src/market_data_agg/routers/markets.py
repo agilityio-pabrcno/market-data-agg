@@ -12,8 +12,11 @@ the service and return responses.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, Query
+
+logger = logging.getLogger(__name__)
 
 from market_data_agg.db import Source
 from market_data_agg.dependencies import (get_crypto_provider,
@@ -34,14 +37,22 @@ async def get_market_overview(
     """Get an overview of quotes across all market types.
 
     Returns a snapshot of each provider's main/top quotes (stocks, crypto, prediction markets).
+    If a provider fails (e.g. rate limit), its results are omitted and the rest are returned.
     """
     # TODO: Move this logic to a markets service layer.
-    stocks, crypto, predictions = await asyncio.gather(
+    results = await asyncio.gather(
         stocks_provider.get_overview_quotes(),
         crypto_provider.get_overview_quotes(),
         predictions_provider.get_overview_quotes(),
+        return_exceptions=True,
     )
-    return list(stocks) + list(crypto) + list(predictions)
+    quotes: list[MarketQuote] = []
+    for name, result in zip(("stocks", "crypto", "predictions"), results):
+        if isinstance(result, Exception):
+            logger.warning("Markets overview: %s provider failed: %s", name, result)
+            continue
+        quotes.extend(result)
+    return quotes
 
 
 def _change_24h(q: MarketQuote) -> float:
@@ -64,15 +75,22 @@ async def get_top_movers(
     """Get top movers based on 24h change.
 
     Uses each provider's overview quotes; sorts by absolute 24h change.
+    If a provider fails when source is None, its results are omitted.
     """
     # TODO: Move this logic to a markets service layer.
     if source is None:
-        stocks, crypto, predictions = await asyncio.gather(
+        results = await asyncio.gather(
             stocks_provider.get_overview_quotes(),
             crypto_provider.get_overview_quotes(),
             predictions_provider.get_overview_quotes(),
+            return_exceptions=True,
         )
-        quotes = list(stocks) + list(crypto) + list(predictions)
+        quotes = []
+        for name, result in zip(("stocks", "crypto", "predictions"), results):
+            if isinstance(result, Exception):
+                logger.warning("Top movers: %s provider failed: %s", name, result)
+                continue
+            quotes.extend(result)
     elif source == Source.STOCK:
         quotes = await stocks_provider.get_overview_quotes()
     elif source == Source.CRYPTO:

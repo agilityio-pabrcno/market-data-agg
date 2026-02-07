@@ -1,9 +1,9 @@
-"""Polymarket prediction market routes.
+"""Prediction market routes (Polymarket provider).
 
-List/get/overview/refresh logic will live in a predictions (polymarket) service layer;
+List/get/overview/refresh logic will live in a predictions service layer;
 this router should only call the service and return responses.
 """
-# TODO: Introduce a predictions/polymarket service layer: move list_markets,
+# TODO: Introduce a predictions service layer: move list_markets,
 #       get_quote, get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
 # TODO:  API gateway (rate limiting, routing) in front of routers.
@@ -20,13 +20,13 @@ from market_data_agg.providers import PredictionsProviderABC
 from market_data_agg.schemas import MarketQuote
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/polymarket", tags=["polymarket"])
+router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 # Route order: /overview before /markets so the overview endpoint is matched first.
 
 
 @router.get("/overview", response_model=list[MarketQuote])
-async def get_polymarket_overview(
+async def get_predictions_overview(
     provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> list[MarketQuote]:
     """Get overview (active) prediction markets.
@@ -38,11 +38,11 @@ async def get_polymarket_overview(
         return await provider.get_overview_quotes()
     except httpx.HTTPStatusError as e:
         status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Polymarket API error") from e
+        raise HTTPException(status_code=status, detail="Predictions API error") from e
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to Polymarket timed out")
+        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
     except Exception as exc:
-        logger.exception("Failed to fetch Polymarket overview")
+        logger.exception("Failed to fetch predictions overview")
         raise HTTPException(status_code=500, detail="Failed to fetch overview") from exc
 
 
@@ -68,11 +68,11 @@ async def list_markets(
         return await provider.list_markets(active=active, limit=limit, tag_id=tag_id)
     except httpx.HTTPStatusError as e:
         status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Polymarket API error")
+        raise HTTPException(status_code=status, detail="Predictions API error")
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to Polymarket timed out")
+        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
     except Exception as exc:
-        logger.exception("Failed to fetch Polymarket markets")
+        logger.exception("Failed to fetch predictions markets")
         raise HTTPException(status_code=500, detail="Failed to fetch markets") from exc
 
 
@@ -98,19 +98,19 @@ async def get_market(
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Market '{market_id}' not found")
         status = 502 if e.response.status_code >= 500 else e.response.status_code
-        raise HTTPException(status_code=status, detail="Polymarket API error")
+        raise HTTPException(status_code=status, detail="Predictions API error")
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Request to Polymarket timed out")
+        raise HTTPException(status_code=504, detail="Request to predictions API timed out")
     except Exception as exc:
-        logger.exception("Failed to fetch Polymarket market %s", market_id)
+        logger.exception("Failed to fetch predictions market %s", market_id)
         raise HTTPException(status_code=500, detail="Failed to fetch market") from exc
 
 
 @router.post("/refresh")
-async def refresh_polymarket(
+async def refresh_predictions(
     provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> dict[str, str]:
-    """Force refresh the Polymarket provider.
+    """Force refresh the predictions provider.
 
     Clears cached market data and reconnects WebSocket.
     """
@@ -119,5 +119,5 @@ async def refresh_polymarket(
         await provider.refresh()
         return {"status": "refreshed"}
     except Exception as exc:
-        logger.exception("Failed to refresh Polymarket provider")
+        logger.exception("Failed to refresh predictions provider")
         raise HTTPException(status_code=500, detail="Failed to refresh") from exc

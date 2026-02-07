@@ -14,7 +14,7 @@ class Source(str, Enum):
 
     STOCK = "stock"
     CRYPTO = "crypto"
-    EVENTS = "events"
+    PREDICTIONS = "predictions"
 
 
 class User(SQLModel, table=True):

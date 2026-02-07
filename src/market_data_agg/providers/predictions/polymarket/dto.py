@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from market_data_agg.db import Source
 from market_data_agg.providers.core import round2
-from market_data_agg.providers.predictions.polymarket.models import PolymarketQuoteMetadata
+from market_data_agg.providers.predictions.polymarket.models import \
+    PolymarketQuoteMetadata
 from market_data_agg.schemas import MarketQuote
 
 
@@ -155,7 +156,7 @@ class PolymarketMarketDTO(BaseModel):
     def to_market_quote(self) -> MarketQuote:
         """Build MarketQuote: symbol=question, value=max prob, volume=total USD."""
         return MarketQuote(
-            source=Source.EVENTS,
+            source=Source.PREDICTIONS,
             symbol=self.symbol,
             value=round2(self.value),
             volume=round2(self.volume_compiled),
@@ -180,4 +181,6 @@ class PolymarketPriceUpdateDTO(BaseModel):
     asset_id: str | None = None
     price: str | float | None = None
     timestamp: str | int | None = None
+    price_changes: list[dict] | None = None
+    price_changes: list[dict] | None = None
     price_changes: list[dict] | None = None

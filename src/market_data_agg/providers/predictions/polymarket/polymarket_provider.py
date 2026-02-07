@@ -162,7 +162,7 @@ class PolymarketProvider(PredictionsProviderABC):
         """
         symbol = token_to_symbol.get(asset_id, asset_id)
         return MarketQuote(
-            source=Source.EVENTS,
+            source=Source.PREDICTIONS,
             symbol=symbol,
             value=round2(price),
             volume=None,

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from market_data_agg.dependencies import wire_providers
 from market_data_agg.routers import (crypto_router, markets_router,
-                                     polymarket_router, stocks_router)
+                                     predictions_router, stocks_router)
 
 
 @asynccontextmanager
@@ -30,7 +30,7 @@ app = FastAPI(
 # Include routers
 app.include_router(stocks_router)
 app.include_router(crypto_router)
-app.include_router(polymarket_router)
+app.include_router(predictions_router)
 app.include_router(markets_router)
 
 
