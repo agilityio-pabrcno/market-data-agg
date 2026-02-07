@@ -1,18 +1,30 @@
 """Main module for the market data aggregation service."""
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 
+from market_data_agg.dependencies import wire_providers
 from market_data_agg.routers import (crypto_router, markets_router,
                                      polymarket_router, stocks_router)
+
+
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    """Wire shared dependencies at startup; dispose on shutdown."""
+    wire_providers(fastapi_app)
+    yield
+    # Optional: close any client resources on shutdown
+
 
 app = FastAPI(
     title="Market Data Aggregator",
     description="Unified API for stocks, crypto, and prediction markets",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Include routers

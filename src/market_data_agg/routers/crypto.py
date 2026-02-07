@@ -1,5 +1,10 @@
-"""Cryptocurrency market data routes (CoinGecko)."""
-# TODO: Move business logic (provider calls, mapping) into a crypto service layer.
+"""Cryptocurrency market data routes (CoinGecko).
+
+Quote/history/overview/refresh logic will live in a crypto service layer;
+this router should only call the service and return responses.
+"""
+# TODO: Introduce a crypto service layer: move get_quote, get_history,
+#       get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
 # TODO: Add API gateway (rate limiting) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
@@ -7,28 +12,45 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from market_data_agg.providers import CoinGeckoProvider
+from market_data_agg.dependencies import get_crypto_provider
+from market_data_agg.providers import CryptoProviderABC
 from market_data_agg.schemas import MarketQuote
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
+# Route order: /overview must be declared before /{symbol} so "overview" is not matched as a symbol.
 
-@lru_cache
-def get_provider() -> CoinGeckoProvider:
-    """Get singleton CoinGecko provider instance."""
-    return CoinGeckoProvider()
+
+@router.get("/overview", response_model=list[MarketQuote])
+async def get_crypto_overview(
+    provider: CryptoProviderABC = Depends(get_crypto_provider),
+) -> list[MarketQuote]:
+    """Get overview (top by market cap) crypto quotes.
+
+    Returns the provider's default set of top cryptocurrencies.
+    """
+    # Service layer will own: calling provider.get_overview_quotes() and error handling.
+    try:
+        return await provider.get_overview_quotes()
+    except httpx.HTTPStatusError as e:
+        status = 502 if e.response.status_code >= 500 else e.response.status_code
+        raise HTTPException(status_code=status, detail="CoinGecko API error") from e
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Request to CoinGecko timed out")
+    except Exception as exc:
+        logger.exception("Failed to fetch crypto overview")
+        raise HTTPException(status_code=500, detail="Failed to fetch overview") from exc
 
 
 @router.get("/{symbol}", response_model=MarketQuote)
 async def get_crypto_quote(
     symbol: str,
-    provider: CoinGeckoProvider = Depends(get_provider),
+    provider: CryptoProviderABC = Depends(get_crypto_provider),
 ) -> MarketQuote:
     """Get the current quote for a cryptocurrency.
 
@@ -39,6 +61,7 @@ async def get_crypto_quote(
     Returns:
         Current market quote with price and metadata.
     """
+    # Service layer will own: get_quote(symbol), normalization, and HTTP error mapping.
     try:
         return await provider.get_quote(symbol)
     except ValueError as e:
@@ -56,7 +79,7 @@ async def get_crypto_quote(
 async def get_crypto_history(
     symbol: str,
     days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
-    provider: CoinGeckoProvider = Depends(get_provider),
+    provider: CryptoProviderABC = Depends(get_crypto_provider),
 ) -> list[MarketQuote]:
     """Get historical data for a cryptocurrency.
 
@@ -67,6 +90,7 @@ async def get_crypto_history(
     Returns:
         List of historical quotes ordered by timestamp.
     """
+    # Service layer will own: date range (days → start/end), get_history(), and error mapping.
     end = datetime.utcnow()
     start = end - timedelta(days=days)
 
@@ -88,12 +112,13 @@ async def get_crypto_history(
 
 @router.post("/refresh")
 async def refresh_crypto(
-    provider: CoinGeckoProvider = Depends(get_provider),
+    provider: CryptoProviderABC = Depends(get_crypto_provider),
 ) -> dict[str, str]:
     """Force refresh the crypto data provider.
 
     Clears any cached data.
     """
+    # Service layer will own: refresh orchestration and response shape.
     try:
         await provider.refresh()
         return {"status": "refreshed"}

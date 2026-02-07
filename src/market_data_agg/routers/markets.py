@@ -1,153 +1,87 @@
-"""Aggregated market views across all providers."""
-# TODO: Move aggregation logic into a markets service layer (orchestrate providers).
+"""Aggregated market views across all providers.
+
+Most orchestration (gathering provider overviews, combining results, top-movers
+sorting) will live in a markets service layer; this router should only call
+the service and return responses.
+"""
+# TODO: Introduce a markets service layer: move overview aggregation (gather +
+#       flatten), top-movers (gather by source, sort by change_24h), and any
+#       future aggregation logic there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
 # TODO: Consider API gateway (rate limiting, routing) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
-from functools import lru_cache
+import asyncio
 
-import httpx
 from fastapi import APIRouter, Depends, Query
 
 from market_data_agg.db import Source
-from market_data_agg.providers import (CoinGeckoProvider, PolymarketProvider,
-                                       YFinanceProvider)
+from market_data_agg.dependencies import (get_crypto_provider,
+                                          get_predictions_provider,
+                                          get_stocks_provider)
+from market_data_agg.providers import (CryptoProviderABC,
+                                       PredictionsProviderABC,
+                                       StocksProviderABC)
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
-# Default symbols for overview
-DEFAULT_STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
-DEFAULT_CRYPTO = ["bitcoin", "ethereum", "solana"]
-
-
-@lru_cache
-def get_stocks_provider() -> YFinanceProvider:
-    """Get singleton YFinance provider."""
-    return YFinanceProvider()
-
-
-@lru_cache
-def get_coingecko() -> CoinGeckoProvider:
-    """Get singleton CoinGecko provider."""
-    return CoinGeckoProvider()
-
-
-@lru_cache
-def get_polymarket() -> PolymarketProvider:
-    """Get singleton Polymarket provider."""
-    return PolymarketProvider()
+# Routes are static (/overview, /top-movers); no path params, so order is flexible.
 
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_market_overview(
-    include_stocks: bool = Query(default=True, description="Include stock quotes"),
-    include_crypto: bool = Query(default=True, description="Include crypto quotes"),
-    include_polymarket: bool = Query(default=True, description="Include prediction markets"),
-    polymarket_limit: int = Query(default=5, ge=1, le=20, description="Max prediction markets"),
-    stocks_provider: YFinanceProvider = Depends(get_stocks_provider),
-    coingecko: CoinGeckoProvider = Depends(get_coingecko),
-    polymarket: PolymarketProvider = Depends(get_polymarket),
+    stocks_provider: StocksProviderABC = Depends(get_stocks_provider),
+    crypto_provider: CryptoProviderABC = Depends(get_crypto_provider),
+    predictions_provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> list[MarketQuote]:
     """Get an overview of quotes across all market types.
 
-    Returns a snapshot of key stocks, crypto, and prediction markets.
-
-    Args:
-        include_stocks: Include top stock quotes.
-        include_crypto: Include top crypto quotes.
-        include_polymarket: Include active prediction markets.
-        polymarket_limit: Max prediction markets to include.
-
-    Returns:
-        Combined list of quotes from all sources.
+    Returns a snapshot of each provider's main/top quotes (stocks, crypto, prediction markets).
     """
-    quotes: list[MarketQuote] = []
+    # Service layer will own: asyncio.gather of all three get_overview_quotes(), flatten, and error handling.
+    stocks, crypto, predictions = await asyncio.gather(
+        stocks_provider.get_overview_quotes(),
+        crypto_provider.get_overview_quotes(),
+        predictions_provider.get_overview_quotes(),
+    )
+    return list(stocks) + list(crypto) + list(predictions)
 
-    # Fetch stocks
-    if include_stocks:
-        for symbol in DEFAULT_STOCKS:
-            try:
-                quote = await stocks_provider.get_quote(symbol)
-                quotes.append(quote)
-            except (httpx.HTTPError, ValueError, KeyError):
-                pass
 
-    # Fetch crypto
-    if include_crypto:
-        for symbol in DEFAULT_CRYPTO:
-            try:
-                quote = await coingecko.get_quote(symbol)
-                quotes.append(quote)
-            except (httpx.HTTPError, ValueError, KeyError):
-                pass
-
-    # Fetch prediction markets
-    if include_polymarket:
-        try:
-            markets = await polymarket.list_markets(active=True, limit=polymarket_limit)
-            quotes.extend(markets)
-        except (httpx.HTTPError, ValueError, KeyError):
-            pass
-
-    return quotes
+# Service layer will own this helper (sort key for 24h change).
+def _change_24h(q: MarketQuote) -> float:
+    if q.metadata and "change_24h" in q.metadata:
+        val = q.metadata["change_24h"]
+        return abs(val) if val is not None else 0.0
+    return 0.0
 
 
 @router.get("/top-movers", response_model=list[MarketQuote])
 async def get_top_movers(
     source: Source | None = Query(default=None, description="Filter by source"),
     limit: int = Query(default=10, ge=1, le=50, description="Max results"),
-    coingecko: CoinGeckoProvider = Depends(get_coingecko),
+    stocks_provider: StocksProviderABC = Depends(get_stocks_provider),
+    crypto_provider: CryptoProviderABC = Depends(get_crypto_provider),
+    predictions_provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> list[MarketQuote]:
     """Get top movers based on 24h change.
 
-    Note: Currently returns available quotes sorted by change percentage.
-    Full implementation requires historical data and caching.
-
-    Args:
-        source: Filter by market type (stock, crypto, polymarket).
-        limit: Maximum results to return.
-
-    Returns:
-        List of quotes sorted by 24h change (descending).
+    Uses each provider's overview quotes; sorts by absolute 24h change.
     """
-    quotes: list[MarketQuote] = []
+    # Service layer will own: source-based gather (or single provider), _change_24h sort, and limit.
+    if source is None:
+        stocks, crypto, predictions = await asyncio.gather(
+            stocks_provider.get_overview_quotes(),
+            crypto_provider.get_overview_quotes(),
+            predictions_provider.get_overview_quotes(),
+        )
+        quotes = list(stocks) + list(crypto) + list(predictions)
+    elif source == Source.STOCK:
+        quotes = await stocks_provider.get_overview_quotes()
+    elif source == Source.CRYPTO:
+        quotes = await crypto_provider.get_overview_quotes()
+    else:
+        quotes = await predictions_provider.get_overview_quotes()
 
-    # For now, just fetch crypto as they have 24h change data
-    if source is None or source == Source.CRYPTO:
-        for symbol in DEFAULT_CRYPTO:
-            try:
-                quote = await coingecko.get_quote(symbol)
-                quotes.append(quote)
-            except (httpx.HTTPError, ValueError, KeyError):
-                pass
-
-    # Sort by 24h change if available
-    def get_change(q: MarketQuote) -> float:
-        if q.metadata and "change_24h" in q.metadata:
-            return abs(q.metadata["change_24h"] or 0)
-        return 0
-
-    quotes.sort(key=get_change, reverse=True)
+    quotes.sort(key=_change_24h, reverse=True)
     return quotes[:limit]
-
-
-@router.get("/trends")
-async def get_trends() -> dict:
-    """Get market trends and sentiment summary.
-
-    Note: Placeholder for trend analysis. Full implementation
-    requires historical data aggregation and analysis.
-
-    Returns:
-        Trend summary with market sentiment indicators.
-    """
-    return {
-        "status": "placeholder",
-        "message": "Trend analysis requires historical data aggregation",
-        "indicators": {
-            "crypto_sentiment": "neutral",
-            "stock_sentiment": "neutral",
-            "prediction_markets": "active",
-        },
-    }

@@ -3,10 +3,10 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-from market_data_agg.schemas import MarketQuote, StreamMessage
+from market_data_agg.schemas import MarketQuote
 
 
-class MarketProvider(ABC):
+class MarketProviderABC(ABC):
     """Base interface for all market data providers.
 
     Each market data provider implements this interface
@@ -25,6 +25,17 @@ class MarketProvider(ABC):
         """
 
     @abstractmethod
+    async def get_overview_quotes(self) -> list[MarketQuote]:
+        """Fetch the main/top quotes for overview (e.g. top stocks, top crypto, active markets).
+
+        Each implementation defines what "overview" means and uses a single batch
+        request or asyncio.gather for multiple symbols; no per-symbol loops in callers.
+
+        Returns:
+            List of MarketQuotes for the provider's default overview set.
+        """
+
+    @abstractmethod
     async def get_history(
         self, symbol: str, start: datetime, end: datetime
     ) -> list[MarketQuote]:
@@ -40,17 +51,17 @@ class MarketProvider(ABC):
         """
 
     @abstractmethod
-    async def stream(self, symbols: list[str]) -> AsyncIterator[StreamMessage]:
+    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
         """Subscribe to real-time updates for the given symbols.
 
-        This is an async generator that yields StreamMessage objects
-        as updates arrive from the provider's WebSocket.
+        This is an async generator that yields MarketQuote objects
+        as updates arrive from the provider.
 
         Args:
             symbols: List of symbols to subscribe to.
 
         Yields:
-            StreamMessage objects with real-time price updates.
+            MarketQuote objects with real-time price/value updates.
         """
         # This yield is needed to make this an async generator in the ABC
         yield  # type: ignore[misc]
@@ -69,7 +80,7 @@ class MarketProvider(ABC):
         Override in subclasses if cleanup is needed.
         """
 
-    async def __aenter__(self) -> "MarketProvider":
+    async def __aenter__(self) -> "MarketProviderABC":
         """Async context manager entry."""
         return self
 

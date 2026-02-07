@@ -1,30 +1,46 @@
-"""Stock market data routes (Yahoo Finance)."""
-# TODO: Move business logic (provider calls, mapping) into a stocks service layer.
+"""Stock market data routes (Yahoo Finance).
+
+Quote/history/overview/refresh logic will live in a stocks service layer;
+this router should only call the service and return responses.
+"""
+# TODO: Introduce a stocks service layer: move get_quote, get_history,
+#       get_overview_quotes, and refresh handling there; keep this module as thin HTTP handlers.
 # TODO: Add middleware for request logging, metrics, and correlation IDs.
 # TODO: Consider API gateway (rate limiting, routing) in front of routers.
 # TODO: Add auth (API keys, JWT, or OAuth) and protect sensitive/refresh endpoints.
 # TODO: Improve error handling: central exception handler, structured error responses, retries.
 from datetime import datetime, timedelta
-from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from market_data_agg.providers import YFinanceProvider
+from market_data_agg.dependencies import get_stocks_provider
+from market_data_agg.providers import StocksProviderABC
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
+# Route order: /overview must be declared before /{symbol} so "overview" is not matched as a symbol.
 
-@lru_cache
-def get_provider() -> YFinanceProvider:
-    """Get singleton YFinance provider instance."""
-    return YFinanceProvider()
+
+@router.get("/overview", response_model=list[MarketQuote])
+async def get_stocks_overview(
+    provider: StocksProviderABC = Depends(get_stocks_provider),
+) -> list[MarketQuote]:
+    """Get overview (main) stock quotes.
+
+    Returns the provider's default set of top stocks.
+    """
+    # Service layer will own: calling provider.get_overview_quotes() and error handling.
+    try:
+        return await provider.get_overview_quotes()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch overview: {e}") from e
 
 
 @router.get("/{symbol}", response_model=MarketQuote)
 async def get_stock_quote(
     symbol: str,
-    provider: YFinanceProvider = Depends(get_provider),
+    provider: StocksProviderABC = Depends(get_stocks_provider),
 ) -> MarketQuote:
     """Get the current quote for a stock symbol.
 
@@ -34,6 +50,7 @@ async def get_stock_quote(
     Returns:
         Current market quote with price and metadata.
     """
+    # Service layer will own: get_quote(symbol), normalization, and 404 mapping.
     try:
         return await provider.get_quote(symbol.upper())
     except Exception as e:
@@ -44,7 +61,7 @@ async def get_stock_quote(
 async def get_stock_history(
     symbol: str,
     days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
-    provider: YFinanceProvider = Depends(get_provider),
+    provider: StocksProviderABC = Depends(get_stocks_provider),
 ) -> list[MarketQuote]:
     """Get historical data for a stock symbol.
 
@@ -55,6 +72,7 @@ async def get_stock_history(
     Returns:
         List of historical quotes ordered by timestamp.
     """
+    # Service layer will own: date range (days → start/end), get_history(), and error mapping.
     end = datetime.utcnow()
     start = end - timedelta(days=days)
 
@@ -66,11 +84,12 @@ async def get_stock_history(
 
 @router.post("/refresh")
 async def refresh_stocks(
-    provider: YFinanceProvider = Depends(get_provider),
+    provider: StocksProviderABC = Depends(get_stocks_provider),
 ) -> dict[str, str]:
     """Force refresh the stock data provider.
 
     No-op for YFinance (no persistent connections or cache).
     """
+    # Service layer will own: refresh orchestration and response shape.
     await provider.refresh()
     return {"status": "refreshed"}

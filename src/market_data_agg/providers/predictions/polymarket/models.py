@@ -6,7 +6,7 @@ class PolymarketQuoteMetadata(BaseModel):
     """Metadata attached to a MarketQuote when the source is Polymarket.
 
     Captures the prediction market structure: question, outcomes (e.g. Yes/No),
-    their prices (probabilities), CLOB token IDs, and which outcome this quote refers to.
+    their prices (probabilities), CLOB token IDs, and the top outcome used for value.
     """
 
     question: str | None = Field(default=None, description="Market question text")
@@ -26,13 +26,17 @@ class PolymarketQuoteMetadata(BaseModel):
         default_factory=list,
         description="CLOB token IDs for each outcome (for WebSocket subscriptions)",
     )
-    outcome_index: int = Field(
-        default=0,
-        description="Index of the outcome this quote's value refers to",
-    )
-    outcome: str | None = Field(
+    slug: str | None = Field(
         default=None,
-        description="Label of the outcome this quote's value refers to (e.g. 'Yes')",
+        description="Market slug for lookups and deep links",
+    )
+    top_outcome_index: int = Field(
+        default=0,
+        description="Index of the outcome whose probability is quote.value",
+    )
+    top_outcome: str | None = Field(
+        default=None,
+        description="Label of the top outcome (e.g. 'Yes')",
     )
 
     def to_metadata_dict(self) -> dict:
