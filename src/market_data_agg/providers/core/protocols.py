@@ -15,7 +15,8 @@ class PollingStreamable(Protocol):
     def streaming(self) -> bool: ...
 
     @streaming.setter
-    def streaming(self, value: bool) -> None: ...
+    def streaming(self, value: bool) -> None:
+        self._streaming = value
 
 
 class ListMarketsProvider(Protocol):

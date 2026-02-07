@@ -184,4 +184,3 @@ class YFinanceProvider(MarketProviderABC):
     async def close(self) -> None:
         """Clean up resources."""
         self.streaming = False
-        self.streaming = False

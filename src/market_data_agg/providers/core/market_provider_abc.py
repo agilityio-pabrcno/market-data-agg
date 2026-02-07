@@ -27,7 +27,7 @@ class MarketProviderABC(ABC):
 
     @streaming.setter
     def streaming(self, value: bool) -> None:
-        object.__setattr__(self, "_streaming", value)
+        self._streaming = value
 
     @abstractmethod
     async def get_quote(self, symbol: str) -> MarketQuote:
