@@ -8,7 +8,9 @@ import yfinance as yf
 from market_data_agg.db import Source
 from market_data_agg.providers.core import MarketProviderABC, round2
 from market_data_agg.providers.core.stream_helpers import stream_by_polling
-from market_data_agg.providers.stocks.yfinance.models import YFinanceBarMetadata
+from market_data_agg.providers.core.utils import normalize_stock_symbol
+from market_data_agg.providers.stocks.yfinance.models import \
+    YFinanceBarMetadata
 from market_data_agg.schemas import MarketQuote
 
 
@@ -30,11 +32,6 @@ class YFinanceProvider(MarketProviderABC):
         """
         super().__init__()
         self._poll_interval = poll_interval
-
-    @staticmethod
-    def _normalize_symbol(symbol: str) -> str:
-        """Normalize a stock symbol (uppercase)."""
-        return symbol.upper()
 
     @staticmethod
     def _quote(
@@ -89,7 +86,7 @@ class YFinanceProvider(MarketProviderABC):
         Returns:
             MarketQuote with the current price.
         """
-        sym = self._normalize_symbol(symbol)
+        sym = normalize_stock_symbol(symbol)
         return await asyncio.to_thread(self._fetch_quote_sync, sym)
 
     async def get_overview_quotes(self) -> list[MarketQuote]:
@@ -148,7 +145,7 @@ class YFinanceProvider(MarketProviderABC):
         Returns:
             List of MarketQuotes (daily bars) ordered by timestamp.
         """
-        sym = self._normalize_symbol(symbol)
+        sym = normalize_stock_symbol(symbol)
         return await asyncio.to_thread(self._fetch_history_sync, sym, start, end)
 
     async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
@@ -163,7 +160,7 @@ class YFinanceProvider(MarketProviderABC):
         Yields:
             MarketQuote objects with price updates.
         """
-        normalized = [self._normalize_symbol(s) for s in symbols]
+        normalized = [normalize_stock_symbol(s) for s in symbols]
 
         async def fetch_batch(syms: list[str]) -> list[MarketQuote]:
             results = await asyncio.gather(
@@ -186,4 +183,5 @@ class YFinanceProvider(MarketProviderABC):
 
     async def close(self) -> None:
         """Clean up resources."""
+        self.streaming = False
         self.streaming = False

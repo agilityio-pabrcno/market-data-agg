@@ -7,6 +7,7 @@ import httpx
 
 from market_data_agg.db import Source
 from market_data_agg.providers.core import MarketProviderABC, round2
+from market_data_agg.providers.core.utils import normalize_crypto_id
 from market_data_agg.providers.core.stream_helpers import stream_by_polling
 from market_data_agg.providers.crypto.coingecko.models import (
     CoinGeckoHistoryParams, CoinGeckoMarketsParams, CoinGeckoQuoteMetadata,
@@ -62,7 +63,7 @@ class CoinGeckoProvider(MarketProviderABC):
         Returns:
             MarketQuote with the current price.
         """
-        coin_id = self._normalize_id(symbol)
+        coin_id = normalize_crypto_id(symbol)
         params = CoinGeckoSimplePriceParams().model_dump() | {"ids": coin_id}
         response = await self._client.get("/simple/price", params=params)
         response.raise_for_status()
@@ -97,7 +98,7 @@ class CoinGeckoProvider(MarketProviderABC):
         Returns:
             List of MarketQuotes ordered by timestamp.
         """
-        coin_id = self._normalize_id(symbol)
+        coin_id = normalize_crypto_id(symbol)
         params = CoinGeckoHistoryParams(
             from_ts=int(start.timestamp()),
             to_ts=int(end.timestamp()),
@@ -142,10 +143,10 @@ class CoinGeckoProvider(MarketProviderABC):
         Yields:
             MarketQuote objects with price updates.
         """
-        coin_ids = [self._normalize_id(s) for s in symbols]
+        coin_ids = [normalize_crypto_id(s) for s in symbols]
 
         async def fetch_batch(syms: list[str]) -> list[MarketQuote]:
-            ids = [self._normalize_id(s) for s in syms]
+            ids = [normalize_crypto_id(s) for s in syms]
             params = CoinGeckoStreamPriceParams().model_dump() | {
                 "ids": ",".join(ids),
             }
@@ -178,38 +179,49 @@ class CoinGeckoProvider(MarketProviderABC):
         self.streaming = False
         await self._client.aclose()
 
-    def _normalize_id(self, symbol: str) -> str:
-        """Normalize a CoinGecko ID (lowercase)."""
-        return symbol.lower()
+    def _build_quote(
+        self,
+        symbol: str,
+        value: float,
+        volume: float | None,
+        timestamp: datetime,
+        market_cap: float | None = None,
+        change_24h: float | None = None,
+    ) -> MarketQuote:
+        """Build a MarketQuote from normalized CoinGecko data."""
+        meta = CoinGeckoQuoteMetadata(
+            market_cap=round2(market_cap),
+            change_24h=round2(change_24h),
+        )
+        return MarketQuote(
+            source=Source.CRYPTO,
+            symbol=symbol,
+            value=round2(value),
+            volume=round2(volume) if volume is not None else None,
+            timestamp=timestamp,
+            metadata=meta.model_dump(),
+        )
 
     def _quote_from_simple_price(self, coin_id: str, data: dict) -> MarketQuote:
         """Build a MarketQuote from a /simple/price response row."""
         vol = data.get("usd_24h_vol")
-        meta = CoinGeckoQuoteMetadata(
-            market_cap=round2(data.get("usd_market_cap")),
-            change_24h=round2(data.get("usd_24h_change")),
-        )
-        return MarketQuote(
-            source=Source.CRYPTO,
+        return self._build_quote(
             symbol=coin_id,
-            value=round2(float(data["usd"])),
-            volume=round2(float(vol)) if vol else None,
+            value=float(data["usd"]),
+            volume=float(vol) if vol is not None else None,
             timestamp=parse_timestamp(data.get("last_updated_at")),
-            metadata=meta.model_dump(),
+            market_cap=data.get("usd_market_cap"),
+            change_24h=data.get("usd_24h_change"),
         )
 
     def _quote_from_market_item(self, item: dict) -> MarketQuote:
         """Build a MarketQuote from a /coins/markets response item."""
         vol = item.get("total_volume")
-        meta = CoinGeckoQuoteMetadata(
-            market_cap=round2(item.get("market_cap")),
-            change_24h=round2(item.get("price_change_percentage_24h")),
-        )
-        return MarketQuote(
-            source=Source.CRYPTO,
+        return self._build_quote(
             symbol=item["id"],
-            value=round2(float(item["current_price"])),
-            volume=round2(float(vol)) if vol else None,
+            value=float(item["current_price"]),
+            volume=float(vol) if vol is not None else None,
             timestamp=datetime.utcnow(),
-            metadata=meta.model_dump(),
+            market_cap=item.get("market_cap"),
+            change_24h=item.get("price_change_percentage_24h"),
         )
