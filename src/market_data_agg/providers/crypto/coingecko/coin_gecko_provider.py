@@ -12,11 +12,7 @@ from market_data_agg.providers.crypto.coingecko.models import (
     CoinGeckoHistoryParams, CoinGeckoMarketsParams, CoinGeckoQuoteMetadata,
     CoinGeckoSimplePriceParams, CoinGeckoStreamPriceParams)
 from market_data_agg.schemas import MarketQuote
-
-
-def _parse_timestamp(ts: float | None) -> datetime:
-    """Convert optional Unix timestamp (seconds) to datetime; fallback to utcnow."""
-    return datetime.fromtimestamp(ts) if ts is not None else datetime.utcnow()
+from market_data_agg.utils import parse_timestamp
 
 
 class CoinGeckoProvider(MarketProviderABC):
@@ -198,7 +194,7 @@ class CoinGeckoProvider(MarketProviderABC):
             symbol=coin_id,
             value=round2(float(data["usd"])),
             volume=round2(float(vol)) if vol else None,
-            timestamp=_parse_timestamp(data.get("last_updated_at")),
+            timestamp=parse_timestamp(data.get("last_updated_at")),
             metadata=meta.model_dump(),
         )
 
