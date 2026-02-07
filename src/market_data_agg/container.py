@@ -93,6 +93,12 @@ def get_prediction_service_ws(websocket: WebSocket, provider: str) -> MarketServ
     return _prediction_service(websocket.scope["app"].state.container, provider)
 
 
+def get_polymarket_service_ws(websocket: WebSocket) -> MarketService:
+    """Default prediction provider for /predictions/stream (no provider in path)."""
+    return _prediction_service(websocket.scope["app"].state.container, "polymarket")
+
+
 # Type aliases for prediction routes (depend on path param `provider`; define after get_prediction_*)
 PredictionService = Annotated[MarketService, Depends(get_prediction_service)]
 PredictionServiceWs = Annotated[MarketService, Depends(get_prediction_service_ws)]
+PolymarketServiceWs = Annotated[MarketService, Depends(get_polymarket_service_ws)]

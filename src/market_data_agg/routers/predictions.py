@@ -7,20 +7,29 @@ Aggregate routes: /predictions, /predictions/overview.
 
 from typing import Annotated
 
-from dependency_injector.wiring import Provide, inject
+from dependency_injector.wiring import Provide
 from fastapi import APIRouter, Depends, Query, WebSocket
 
-from market_data_agg.container import (Container, PredictionService,
-                                       PredictionServiceWs)
+from market_data_agg.container import (Container, PolymarketServiceWs,
+                                       PredictionService, PredictionServiceWs)
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 
+@router.websocket("/stream")
+async def stream_predictions_default(
+    websocket: WebSocket,
+    service: PolymarketServiceWs,
+) -> None:
+    """Stream real-time quotes (default: Polymarket). Query param: ?symbols=slug-1,slug-2"""
+    await service.handle_websocket_stream(
+        websocket,
+        "Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
+    )
 
 
 @router.get("/overview", response_model=list[MarketQuote])
-@inject
 async def get_predictions_overview(
     service: Annotated[PredictionService, Depends(Provide[Container.prediction_services])],
 ) -> list[MarketQuote]:
@@ -29,13 +38,11 @@ async def get_predictions_overview(
 
 
 @router.websocket("/{provider}/stream")
-@inject
-async def stream_predictions(
+async def stream_predictions_provider(
     websocket: WebSocket,
-
     service: PredictionServiceWs,
 ) -> None:
-    """Stream real-time quotes. Query param: ?symbols=slug-1,slug-2"""
+    """Stream real-time quotes for a specific provider (e.g. polymarket). Query param: ?symbols=slug-1,slug-2"""
     await service.handle_websocket_stream(
         websocket,
         "Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
@@ -43,7 +50,6 @@ async def stream_predictions(
 
 
 @router.get("/{provider}/overview", response_model=list[MarketQuote])
-@inject
 async def get_provider_overview(
 
     service: PredictionService,
@@ -53,7 +59,6 @@ async def get_provider_overview(
 
 
 @router.get("/{provider}/markets", response_model=list[MarketQuote])
-@inject
 async def list_markets(
 
     service: PredictionService,
@@ -66,7 +71,6 @@ async def list_markets(
 
 
 @router.get("/{provider}/markets/{market_id}", response_model=MarketQuote)
-@inject
 async def get_market(
 
     market_id: str,
@@ -77,7 +81,6 @@ async def get_market(
 
 
 @router.post("/{provider}/refresh")
-@inject
 async def refresh_predictions(
     
     service: PredictionService,
