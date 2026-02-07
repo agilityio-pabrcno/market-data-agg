@@ -10,137 +10,81 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from market_data_agg.db import Source
-from market_data_agg.providers.predictions.polymarket.models import (
-    PolymarketQuoteMetadata,
-)
+from market_data_agg.providers.predictions.polymarket.models import PolymarketQuoteMetadata
 from market_data_agg.schemas import MarketQuote
-
-
-def _parse_outcomes(raw: str | list[str] | None) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return []
-    return list(raw)
-
-
-def _parse_outcome_prices(raw: str | list[str] | None) -> list[float]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        try:
-            arr = json.loads(raw)
-        except json.JSONDecodeError:
-            return []
-    else:
-        arr = raw
-    return [float(p) for p in arr]
-
-
-def _parse_clob_token_ids(raw: str | list[str] | None) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        if raw.strip().startswith("["):
-            try:
-                return json.loads(raw)
-            except json.JSONDecodeError:
-                pass
-        return [tid.strip() for tid in raw.split(",") if tid.strip()]
-    return list(raw)
 
 
 class PolymarketMarketDTO(BaseModel):
     """DTO for a market from Polymarket's Gamma API.
 
-    Validates raw API fields and compiles parsed/derived fields. Use
-    to_market_quote() to get a MarketQuote (symbol=question, value=max prob, volume=total).
+    Only fields needed for MarketQuote (symbol, value, volume, timestamp) and
+    for stream (clob_token_ids). Extra API keys are ignored (Pydantic default).
+
+    Decorators: @computed_field = include in dump/schema; @property = access as attribute.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    # Core identifiers
-    id: str | None = Field(default=None, description="Market ID")
-    slug: str | None = Field(default=None, description="Market slug identifier")
-    question: str | None = Field(default=None, description="Market question text")
-    condition_id: str | None = Field(
-        default=None, alias="conditionId", description="Polymarket condition ID (hex)"
-    )
+    # Symbol (question or fallbacks)
+    question: str | None = None
+    slug: str | None = None
+    condition_id: str | None = Field(default=None, alias="conditionId")
 
-    # Raw market data (API may send JSON strings)
-    outcomes: str | None = Field(
-        default=None,
-        description="Outcome labels as JSON string",
-    )
-    outcome_prices: str | None = Field(
-        default=None,
-        alias="outcomePrices",
-        description="Outcome prices as JSON string",
-    )
-    clob_token_ids: str | None = Field(
-        default=None,
-        alias="clobTokenIds",
-        description="CLOB token IDs as JSON string or comma-separated",
-    )
+    # Raw lists (API may send JSON strings or comma-separated)
+    outcomes: str | None = None
+    outcome_prices: str | None = Field(default=None, alias="outcomePrices")
+    clob_token_ids: str | None = Field(default=None, alias="clobTokenIds")
 
-    # Volume and liquidity
-    volume: str | None = Field(default=None, description="Trading volume")
-    volume_num: float | None = Field(
-        default=None, alias="volumeNum", description="Volume as number"
-    )
-    liquidity: str | None = Field(default=None, description="Market liquidity")
-    liquidity_num: float | None = Field(
-        default=None, alias="liquidityNum", description="Liquidity as number"
-    )
+    # Volume and time (for MarketQuote)
+    volume: str | None = None
+    volume_num: float | None = Field(default=None, alias="volumeNum")
+    updated_at: str | None = Field(default=None, alias="updatedAt")
 
-    # Timestamps
-    updated_at: str | None = Field(
-        default=None, alias="updatedAt", description="Last update timestamp"
-    )
-    created_at: str | None = Field(
-        default=None, alias="createdAt", description="Creation timestamp"
-    )
-    end_date: str | None = Field(
-        default=None, alias="endDate", description="Market end date"
-    )
-    start_date: str | None = Field(
-        default=None, alias="startDate", description="Market start date"
-    )
+    # --- Parser: API often sends JSON arrays or comma-separated strings ---
 
-    # Market state
-    active: bool | None = Field(default=None, description="Whether market is active")
-    closed: bool | None = Field(default=None, description="Whether market is closed")
-    enable_order_book: bool | None = Field(
-        default=None,
-        alias="enableOrderBook",
-        description="Whether order book is enabled",
-    )
+    @staticmethod
+    def _parse_raw_list(
+        raw: str | list | None,
+        *,
+        coerce_float: bool = False,
+        allow_comma_split: bool = False,
+    ) -> list:
+        """Parse a field that may be None, a JSON array string, or already a list."""
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            arr = raw
+        elif isinstance(raw, str):
+            s = raw.strip()
+            if allow_comma_split and not s.startswith("["):
+                arr = [x.strip() for x in raw.split(",") if x.strip()]
+            else:
+                try:
+                    arr = json.loads(raw)
+                except json.JSONDecodeError:
+                    return []
+        else:
+            return []
+        if coerce_float:
+            return [float(p) for p in arr]
+        return [str(x) for x in arr]
 
-    # Additional metadata
-    description: str | None = Field(default=None, description="Market description")
-    category: str | None = Field(default=None, description="Market category")
-    image: str | None = Field(default=None, description="Market image URL")
-    icon: str | None = Field(default=None, description="Market icon URL")
-
-    # --- Compiled/parsed (from raw API fields) ---
+    # --- Compiled/parsed (exposed via @computed_field + @property) ---
 
     @computed_field
     @property
     def outcomes_parsed(self) -> list[str]:
-        return _parse_outcomes(self.outcomes)
+        return self._parse_raw_list(self.outcomes)
 
     @computed_field
     @property
     def outcome_prices_parsed(self) -> list[float]:
-        return _parse_outcome_prices(self.outcome_prices)
+        return self._parse_raw_list(self.outcome_prices, coerce_float=True)
 
     @computed_field
     @property
     def clob_token_ids_parsed(self) -> list[str]:
-        return _parse_clob_token_ids(self.clob_token_ids)
+        return self._parse_raw_list(self.clob_token_ids, allow_comma_split=True)
 
     @computed_field
     @property
@@ -199,18 +143,13 @@ class PolymarketMarketDTO(BaseModel):
         return datetime.utcnow()
 
     def to_metadata_dict(self) -> dict:
-        """Return dict for MarketQuote.metadata (full Polymarket structure)."""
-        meta = PolymarketQuoteMetadata(
-            question=self.question,
-            outcomes=self.outcomes_parsed,
-            outcome_prices=self.outcome_prices_parsed,
-            condition_id=self.condition_id,
+        """Minimal dict for MarketQuote.metadata (clob_token_ids, identity, top_outcome)."""
+        return PolymarketQuoteMetadata(
             clob_token_ids=self.clob_token_ids_parsed,
+            condition_id=self.condition_id,
             slug=self.slug,
-            top_outcome_index=self.top_outcome_index,
             top_outcome=self.top_outcome,
-        )
-        return meta.to_metadata_dict()
+        ).to_metadata_dict()
 
     def to_market_quote(self) -> MarketQuote:
         """Build MarketQuote: symbol=question, value=max prob, volume=total USD."""
@@ -224,44 +163,20 @@ class PolymarketMarketDTO(BaseModel):
         )
 
 class PolymarketEventDTO(BaseModel):
-    """DTO representing an event from Polymarket's Gamma API.
+    """Event from Gamma API: we only need the list of markets."""
 
-    Events contain one or more markets.
-    """
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str | None = Field(default=None, description="Event ID")
-    title: str | None = Field(default=None, description="Event title")
-    slug: str | None = Field(default=None, description="Event slug")
-    description: str | None = Field(default=None, description="Event description")
-    markets: list[PolymarketMarketDTO] = Field(
-        default_factory=list, description="Markets within this event"
-    )
-    active: bool | None = Field(default=None, description="Whether event is active")
-    closed: bool | None = Field(default=None, description="Whether event is closed")
-    start_date: str | None = Field(
-        default=None, alias="startDate", description="Event start date"
-    )
-    end_date: str | None = Field(
-        default=None, alias="endDate", description="Event end date"
-    )
-    liquidity: float | None = Field(default=None, description="Event liquidity")
-    volume: float | None = Field(default=None, description="Event volume")
+    markets: list[PolymarketMarketDTO] = Field(default_factory=list)
 
 
 class PolymarketPriceUpdateDTO(BaseModel):
-    """DTO representing a price update from Polymarket's CLOB WebSocket.
+    """Price update from CLOB WebSocket (for stream)."""
 
-    This matches the structure of WebSocket messages for price updates.
-    """
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    event_type: str = Field(..., description="Type of event (last_trade_price, price_change)")
-    asset_id: str | None = Field(default=None, description="CLOB token/asset ID")
-    price: str | float | None = Field(default=None, description="Trade price")
-    timestamp: str | int | None = Field(default=None, description="Timestamp in milliseconds")
-    price_changes: list[dict] | None = Field(
-        default=None, description="List of price changes (for price_change events)"
-    )
+    event_type: str
+    asset_id: str | None = None
+    price: str | float | None = None
+    timestamp: str | int | None = None
+    price_changes: list[dict] | None = None

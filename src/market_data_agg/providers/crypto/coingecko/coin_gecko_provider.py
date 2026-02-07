@@ -8,13 +8,10 @@ import httpx
 
 from market_data_agg.db import Source
 from market_data_agg.providers.crypto.coingecko.models import (
-    CoinGeckoHistoryParams,
-    CoinGeckoMarketsParams,
-    CoinGeckoQuoteMetadata,
-    CoinGeckoSimplePriceParams,
-    CoinGeckoStreamPriceParams,
-)
-from market_data_agg.providers.crypto.crypto_provider_abc import CryptoProviderABC
+    CoinGeckoHistoryParams, CoinGeckoMarketsParams, CoinGeckoQuoteMetadata,
+    CoinGeckoSimplePriceParams, CoinGeckoStreamPriceParams)
+from market_data_agg.providers.crypto.crypto_provider_abc import \
+    CryptoProviderABC
 from market_data_agg.schemas import MarketQuote
 
 
@@ -60,45 +57,6 @@ class CoinGeckoProvider(CryptoProviderABC):
 
         base = self.PRO_BASE_URL if self._use_pro_api else self.BASE_URL
         self._client = httpx.AsyncClient(base_url=base, headers=headers)
-
-    @staticmethod
-    def _normalize_id(symbol: str) -> str:
-        """Normalize a CoinGecko ID (lowercase)."""
-        return symbol.lower()
-
-    @staticmethod
-    def _quote_from_simple_price(coin_id: str, data: dict) -> MarketQuote:
-        """Build a MarketQuote from a /simple/price response row."""
-        vol = data.get("usd_24h_vol")
-        meta = CoinGeckoQuoteMetadata(
-            market_cap=data.get("usd_market_cap"),
-            change_24h=data.get("usd_24h_change"),
-        )
-        return MarketQuote(
-            source=Source.CRYPTO,
-            symbol=coin_id,
-            value=float(data["usd"]),
-            volume=float(vol) if vol else None,
-            timestamp=_parse_timestamp(data.get("last_updated_at")),
-            metadata=meta.model_dump(),
-        )
-
-    @staticmethod
-    def _quote_from_market_item(item: dict) -> MarketQuote:
-        """Build a MarketQuote from a /coins/markets response item."""
-        vol = item.get("total_volume")
-        meta = CoinGeckoQuoteMetadata(
-            market_cap=item.get("market_cap"),
-            change_24h=item.get("price_change_percentage_24h"),
-        )
-        return MarketQuote(
-            source=Source.CRYPTO,
-            symbol=item["id"],
-            value=float(item["current_price"]),
-            volume=float(vol) if vol else None,
-            timestamp=datetime.utcnow(),
-            metadata=meta.model_dump(),
-        )
 
     async def get_quote(self, symbol: str) -> MarketQuote:
         """Fetch the current quote for a cryptocurrency.
@@ -219,3 +177,39 @@ class CoinGeckoProvider(CryptoProviderABC):
         """Close the HTTP client."""
         self._streaming = False
         await self._client.aclose()
+
+    def _normalize_id(self, symbol: str) -> str:
+        """Normalize a CoinGecko ID (lowercase)."""
+        return symbol.lower()
+
+    def _quote_from_simple_price(self, coin_id: str, data: dict) -> MarketQuote:
+        """Build a MarketQuote from a /simple/price response row."""
+        vol = data.get("usd_24h_vol")
+        meta = CoinGeckoQuoteMetadata(
+            market_cap=data.get("usd_market_cap"),
+            change_24h=data.get("usd_24h_change"),
+        )
+        return MarketQuote(
+            source=Source.CRYPTO,
+            symbol=coin_id,
+            value=float(data["usd"]),
+            volume=float(vol) if vol else None,
+            timestamp=_parse_timestamp(data.get("last_updated_at")),
+            metadata=meta.model_dump(),
+        )
+
+    def _quote_from_market_item(self, item: dict) -> MarketQuote:
+        """Build a MarketQuote from a /coins/markets response item."""
+        vol = item.get("total_volume")
+        meta = CoinGeckoQuoteMetadata(
+            market_cap=item.get("market_cap"),
+            change_24h=item.get("price_change_percentage_24h"),
+        )
+        return MarketQuote(
+            source=Source.CRYPTO,
+            symbol=item["id"],
+            value=float(item["current_price"]),
+            volume=float(vol) if vol else None,
+            timestamp=datetime.utcnow(),
+            metadata=meta.model_dump(),
+        )

@@ -3,42 +3,17 @@ from pydantic import BaseModel, Field
 
 
 class PolymarketQuoteMetadata(BaseModel):
-    """Metadata attached to a MarketQuote when the source is Polymarket.
+    """Minimal metadata for a Polymarket MarketQuote.
 
-    Captures the prediction market structure: question, outcomes (e.g. Yes/No),
-    their prices (probabilities), CLOB token IDs, and the top outcome used for value.
+    Only what is needed: clob_token_ids for stream, slug/condition_id for identity,
+    top_outcome for display. Omit fields when not present.
     """
 
-    question: str | None = Field(default=None, description="Market question text")
-    outcomes: list[str] = Field(
-        default_factory=list,
-        description="Outcome labels (e.g. ['Yes', 'No'])",
-    )
-    outcome_prices: list[float] = Field(
-        default_factory=list,
-        description="Probability/price per outcome (0–1), same order as outcomes",
-    )
-    condition_id: str | None = Field(
-        default=None,
-        description="Polymarket condition ID (hex)",
-    )
-    clob_token_ids: list[str] = Field(
-        default_factory=list,
-        description="CLOB token IDs for each outcome (for WebSocket subscriptions)",
-    )
-    slug: str | None = Field(
-        default=None,
-        description="Market slug for lookups and deep links",
-    )
-    top_outcome_index: int = Field(
-        default=0,
-        description="Index of the outcome whose probability is quote.value",
-    )
-    top_outcome: str | None = Field(
-        default=None,
-        description="Label of the top outcome (e.g. 'Yes')",
-    )
+    clob_token_ids: list[str] = Field(default_factory=list)
+    condition_id: str | None = None
+    slug: str | None = None
+    top_outcome: str | None = None
 
     def to_metadata_dict(self) -> dict:
-        """Return a dict suitable for MarketQuote.metadata (JSON-serializable)."""
+        """JSON-serializable dict for MarketQuote.metadata."""
         return self.model_dump()
