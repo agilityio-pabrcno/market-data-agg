@@ -45,10 +45,10 @@ class CoinGeckoProvider(MarketProviderABC):
             use_pro_api: Whether to use the Pro API endpoint.
             poll_interval: Interval in seconds for polling-based streaming.
         """
+        super().__init__()
         self._api_key = api_key or os.getenv("COINGECKO_API_KEY")
         self._use_pro_api = use_pro_api or bool(self._api_key)
         self._poll_interval = poll_interval
-        self._streaming = False
 
         headers: dict[str, str] = {"Accept": "application/json"}
         if self._api_key:
@@ -179,7 +179,7 @@ class CoinGeckoProvider(MarketProviderABC):
 
     async def close(self) -> None:
         """Close the HTTP client."""
-        self._streaming = False
+        self.streaming = False
         await self._client.aclose()
 
     def _normalize_id(self, symbol: str) -> str:

@@ -28,8 +28,8 @@ class YFinanceProvider(MarketProviderABC):
         Args:
             poll_interval: Interval in seconds for polling-based streaming.
         """
+        super().__init__()
         self._poll_interval = poll_interval
-        self._streaming = False
 
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:
@@ -186,4 +186,4 @@ class YFinanceProvider(MarketProviderABC):
 
     async def close(self) -> None:
         """Clean up resources."""
-        self._streaming = False
+        self.streaming = False

@@ -1,61 +1,88 @@
-"""Prediction market routes (Polymarket provider).
+"""Prediction market routes (Polymarket, Kalshi, etc.).
 
-Thin HTTP handlers; business logic and error mapping live in PredictionsService.
+Provider-specific routes use /predictions/{provider}/...
+Aggregate routes: /predictions, /predictions/overview.
 """
-# Route order: /overview and /stream before /markets so they are matched first.
+# Route order: static paths before /{provider}/... so they match first.
 
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, WebSocket
 
-from market_data_agg.dependencies import get_predictions_service
+from market_data_agg.container import (
+    Container,
+    get_prediction_providers,
+    get_prediction_service,
+    get_prediction_service_ws,
+)
 from market_data_agg.schemas import MarketQuote
-from market_data_agg.services import PredictionsService
+from market_data_agg.services import MarketService, MarketsService
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 
-@router.websocket("/stream")
-async def stream_predictions(websocket: WebSocket) -> None:
-    """Stream real-time prediction market quotes. Query param: ?symbols=market-slug-1,market-slug-2"""
-    app = websocket.scope["app"]
-    service = PredictionsService(app.state.predictions_provider)
+@router.get("")
+async def list_providers(
+    providers: list[str] = Depends(get_prediction_providers),
+) -> dict[str, list[str]]:
+    """List available prediction providers (e.g. polymarket, kalshi)."""
+    return {"providers": providers}
+
+
+@router.get("/overview", response_model=list[MarketQuote])
+@inject
+async def get_predictions_overview(
+    service: Annotated[MarketsService, Depends(Provide[Container.markets_service])],
+) -> list[MarketQuote]:
+    """Overview (active markets) from all prediction providers."""
+    return await service.get_predictions_overview()
+
+
+@router.websocket("/{provider}/stream")
+async def stream_predictions(
+    websocket: WebSocket,
+    service: MarketService = Depends(get_prediction_service_ws),
+) -> None:
+    """Stream real-time quotes. Query param: ?symbols=slug-1,slug-2"""
     await service.handle_websocket_stream(
         websocket,
         "Query param 'symbols' required (e.g. ?symbols=market-slug-1,market-slug-2)",
     )
 
 
-@router.get("/overview", response_model=list[MarketQuote])
-async def get_predictions_overview(
-    service: PredictionsService = Depends(get_predictions_service),
+@router.get("/{provider}/overview", response_model=list[MarketQuote])
+async def get_provider_overview(
+    service: MarketService = Depends(get_prediction_service),
 ) -> list[MarketQuote]:
-    """Get overview (active) prediction markets."""
+    """Overview (active markets) from a specific provider."""
     return await service.get_overview_quotes()
 
 
-@router.get("/markets", response_model=list[MarketQuote])
+@router.get("/{provider}/markets", response_model=list[MarketQuote])
 async def list_markets(
+    service: MarketService = Depends(get_prediction_service),
     active: bool = Query(default=True, description="Filter for active markets only"),
     limit: int = Query(default=50, ge=1, le=100, description="Maximum markets to return"),
     tag_id: str | None = Query(default=None, description="Filter by tag/category ID"),
-    service: PredictionsService = Depends(get_predictions_service),
 ) -> list[MarketQuote]:
-    """List available prediction markets (active, limit, optional tag_id)."""
+    """List available markets from a specific provider."""
     return await service.list_markets(active=active, limit=limit, tag_id=tag_id)
 
 
-@router.get("/markets/{market_id}", response_model=MarketQuote)
+@router.get("/{provider}/markets/{market_id}", response_model=MarketQuote)
 async def get_market(
     market_id: str,
-    service: PredictionsService = Depends(get_predictions_service),
+    service: MarketService = Depends(get_prediction_service),
 ) -> MarketQuote:
-    """Get details for a specific prediction market (slug or condition ID)."""
+    """Get details for a specific market (slug or condition ID)."""
     return await service.get_quote(market_id)
 
 
-@router.post("/refresh")
+@router.post("/{provider}/refresh")
 async def refresh_predictions(
-    service: PredictionsService = Depends(get_predictions_service),
+    service: MarketService = Depends(get_prediction_service),
 ) -> dict[str, str]:
-    """Force refresh the predictions provider."""
+    """Force refresh the provider."""
     await service.refresh()
     return {"status": "refreshed"}

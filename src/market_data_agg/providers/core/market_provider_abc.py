@@ -11,7 +11,23 @@ class MarketProviderABC(ABC):
 
     Each market data provider implements this interface
     to provide a unified way to fetch quotes, historical data, and real-time streams.
+
+    Subclasses must call super().__init__() and must not set _streaming directly;
+    the streaming property (set in base __init__) is used by stream_by_polling to stop when close() is called.
     """
+
+    def __init__(self) -> None:
+        """Initialize provider. Subclasses may override and should call super().__init__()."""
+        self._streaming = False
+
+    @property
+    def streaming(self) -> bool:
+        """Flag used by stream_by_polling to control the polling loop."""
+        return getattr(self, "_streaming", False)
+
+    @streaming.setter
+    def streaming(self, value: bool) -> None:
+        object.__setattr__(self, "_streaming", value)
 
     @abstractmethod
     async def get_quote(self, symbol: str) -> MarketQuote:

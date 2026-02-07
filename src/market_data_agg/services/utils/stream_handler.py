@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from market_data_agg.schemas import MarketQuote
+from market_data_agg.services.protocols import QuoteStreamable
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,13 @@ def parse_symbols_param(
 
 async def handle_websocket_stream(
     websocket: WebSocket,
-    service: Any,
+    service: QuoteStreamable,
     symbol_list: list[str],
     symbols_required_message: str,
 ) -> None:
     """Accept WebSocket, validate symbols, then stream MarketQuotes from the service.
 
-    Service must implement async def stream(symbol_list: list[str]) -> AsyncIterator[MarketQuote].
+    Service must implement stream(symbol_list: list[str]) -> AsyncIterator[MarketQuote].
     """
     await websocket.accept()
     if not symbol_list:

@@ -7,15 +7,15 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 
-from market_data_agg.dependencies import wire_providers
+from market_data_agg.container import init_container
 from market_data_agg.routers import (crypto_router, markets_router,
                                      predictions_router, stocks_router)
 
 
 @asynccontextmanager
 async def lifespan(fastapi_app: FastAPI):
-    """Wire shared dependencies at startup; dispose on shutdown."""
-    wire_providers(fastapi_app)
+    """Wire DI container at startup; dispose on shutdown."""
+    fastapi_app.state.container = init_container()
     yield
     # Optional: close any client resources on shutdown
 

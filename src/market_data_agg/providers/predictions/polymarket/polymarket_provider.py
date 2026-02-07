@@ -27,9 +27,9 @@ class PolymarketProvider(PredictionsProviderABC):
         Args:
             poll_interval_seconds: Seconds between refresh when streaming (default 60).
         """
+        super().__init__()
         self._poll_interval_seconds = poll_interval_seconds
         self._gamma_client = httpx.AsyncClient(base_url=self.GAMMA_API_URL)
-        self._streaming = False
 
     async def _fetch_market(self, symbol: str) -> PolymarketMarketDTO:
         """Fetch a single market by slug from the Gamma API.
@@ -122,9 +122,9 @@ class PolymarketProvider(PredictionsProviderABC):
 
     async def refresh(self) -> None:
         """Stop the current stream loop so the next stream() starts fresh."""
-        self._streaming = False
+        self.streaming = False
 
     async def close(self) -> None:
         """Close Gamma HTTP client."""
-        self._streaming = False
+        self.streaming = False
         await self._gamma_client.aclose()
