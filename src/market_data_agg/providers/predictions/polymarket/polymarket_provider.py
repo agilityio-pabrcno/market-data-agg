@@ -70,11 +70,6 @@ class PolymarketProvider(PredictionsProviderABC):
         """Fetch active prediction markets for overview."""
         return await self.list_markets(active=True, limit=5)
 
-    async def get_history(
-        self, symbol: str, start: datetime, end: datetime
-    ) -> list[MarketQuote]:
-        raise NotImplementedError("Historical data is not supported by this provider")
-
     async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
         """Stream real-time price updates for prediction markets.
 

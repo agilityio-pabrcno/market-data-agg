@@ -35,11 +35,13 @@ class MarketProviderABC(ABC):
             List of MarketQuotes for the provider's default overview set.
         """
 
-    @abstractmethod
     async def get_history(
         self, symbol: str, start: datetime, end: datetime
     ) -> list[MarketQuote]:
         """Fetch historical quotes for a symbol within a time range.
+
+        Default implementation raises NotImplementedError. Override in providers
+        that support historical data (e.g. stocks, crypto).
 
         Args:
             symbol: The asset symbol.
@@ -49,6 +51,7 @@ class MarketProviderABC(ABC):
         Returns:
             A list of MarketQuotes ordered by timestamp.
         """
+        raise NotImplementedError("Historical data is not supported by this provider")
 
     @abstractmethod
     async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
