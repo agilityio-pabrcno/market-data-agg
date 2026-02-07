@@ -7,10 +7,9 @@ from fastapi import FastAPI, Request
 
 from market_data_agg.providers import (
     CoinGeckoProvider,
-    CryptoProviderABC,
+    MarketProviderABC,
     PolymarketProvider,
     PredictionsProviderABC,
-    StocksProviderABC,
     YFinanceProvider,
 )
 
@@ -25,12 +24,12 @@ def wire_providers(app: FastAPI) -> None:
     app.state.predictions_provider = PolymarketProvider()
 
 
-def get_stocks_provider(request: Request) -> StocksProviderABC:
+def get_stocks_provider(request: Request) -> MarketProviderABC:
     """Inject the shared stocks provider (abstraction)."""
     return request.app.state.stocks_provider
 
 
-def get_crypto_provider(request: Request) -> CryptoProviderABC:
+def get_crypto_provider(request: Request) -> MarketProviderABC:
     """Inject the shared crypto provider (abstraction)."""
     return request.app.state.crypto_provider
 

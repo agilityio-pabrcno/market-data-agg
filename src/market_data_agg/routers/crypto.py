@@ -17,7 +17,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from market_data_agg.dependencies import get_crypto_provider
-from market_data_agg.providers import CryptoProviderABC
+from market_data_agg.providers import MarketProviderABC
 from market_data_agg.schemas import MarketQuote
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/crypto", tags=["crypto"])
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_crypto_overview(
-    provider: CryptoProviderABC = Depends(get_crypto_provider),
+    provider: MarketProviderABC = Depends(get_crypto_provider),
 ) -> list[MarketQuote]:
     """Get overview (top by market cap) crypto quotes.
 
@@ -49,7 +49,7 @@ async def get_crypto_overview(
 @router.get("/{symbol}", response_model=MarketQuote)
 async def get_crypto_quote(
     symbol: str,
-    provider: CryptoProviderABC = Depends(get_crypto_provider),
+    provider: MarketProviderABC = Depends(get_crypto_provider),
 ) -> MarketQuote:
     """Get the current quote for a cryptocurrency.
 
@@ -78,7 +78,7 @@ async def get_crypto_quote(
 async def get_crypto_history(
     symbol: str,
     days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
-    provider: CryptoProviderABC = Depends(get_crypto_provider),
+    provider: MarketProviderABC = Depends(get_crypto_provider),
 ) -> list[MarketQuote]:
     """Get historical data for a cryptocurrency.
 
@@ -111,7 +111,7 @@ async def get_crypto_history(
 
 @router.post("/refresh")
 async def refresh_crypto(
-    provider: CryptoProviderABC = Depends(get_crypto_provider),
+    provider: MarketProviderABC = Depends(get_crypto_provider),
 ) -> dict[str, str]:
     """Force refresh the crypto data provider.
 

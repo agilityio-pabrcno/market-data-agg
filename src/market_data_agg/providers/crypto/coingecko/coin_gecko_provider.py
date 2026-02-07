@@ -7,11 +7,10 @@ from datetime import datetime
 import httpx
 
 from market_data_agg.db import Source
+from market_data_agg.providers.core import MarketProviderABC
 from market_data_agg.providers.crypto.coingecko.models import (
     CoinGeckoHistoryParams, CoinGeckoMarketsParams, CoinGeckoQuoteMetadata,
     CoinGeckoSimplePriceParams, CoinGeckoStreamPriceParams)
-from market_data_agg.providers.crypto.crypto_provider_abc import \
-    CryptoProviderABC
 from market_data_agg.schemas import MarketQuote
 
 
@@ -20,7 +19,7 @@ def _parse_timestamp(ts: float | None) -> datetime:
     return datetime.fromtimestamp(ts) if ts is not None else datetime.utcnow()
 
 
-class CoinGeckoProvider(CryptoProviderABC):
+class CoinGeckoProvider(MarketProviderABC):
     """Market data provider for cryptocurrencies via CoinGecko API.
 
     Uses CoinGecko IDs as symbols (e.g., "bitcoin", "ethereum", "solana").

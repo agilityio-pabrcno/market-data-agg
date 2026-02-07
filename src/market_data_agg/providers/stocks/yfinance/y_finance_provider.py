@@ -6,12 +6,12 @@ from datetime import datetime
 import yfinance as yf
 
 from market_data_agg.db import Source
-from market_data_agg.providers.stocks import StocksProviderABC
+from market_data_agg.providers.core import MarketProviderABC
 from market_data_agg.providers.stocks.yfinance.models import YFinanceBarMetadata
 from market_data_agg.schemas import MarketQuote
 
 
-class YFinanceProvider(StocksProviderABC):
+class YFinanceProvider(MarketProviderABC):
     """Market data provider for stocks via Yahoo Finance.
 
     Uses yfinance library for stock quotes and historical data.

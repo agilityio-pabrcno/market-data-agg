@@ -19,9 +19,7 @@ from market_data_agg.db import Source
 from market_data_agg.dependencies import (get_crypto_provider,
                                           get_predictions_provider,
                                           get_stocks_provider)
-from market_data_agg.providers import (CryptoProviderABC,
-                                       PredictionsProviderABC,
-                                       StocksProviderABC)
+from market_data_agg.providers import MarketProviderABC, PredictionsProviderABC
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/markets", tags=["markets"])
@@ -29,8 +27,8 @@ router = APIRouter(prefix="/markets", tags=["markets"])
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_market_overview(
-    stocks_provider: StocksProviderABC = Depends(get_stocks_provider),
-    crypto_provider: CryptoProviderABC = Depends(get_crypto_provider),
+    stocks_provider: MarketProviderABC = Depends(get_stocks_provider),
+    crypto_provider: MarketProviderABC = Depends(get_crypto_provider),
     predictions_provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> list[MarketQuote]:
     """Get an overview of quotes across all market types.
@@ -59,8 +57,8 @@ def _change_24h(q: MarketQuote) -> float:
 async def get_top_movers(
     source: Source | None = Query(default=None, description="Filter by source"),
     limit: int = Query(default=10, ge=1, le=50, description="Max results"),
-    stocks_provider: StocksProviderABC = Depends(get_stocks_provider),
-    crypto_provider: CryptoProviderABC = Depends(get_crypto_provider),
+    stocks_provider: MarketProviderABC = Depends(get_stocks_provider),
+    crypto_provider: MarketProviderABC = Depends(get_crypto_provider),
     predictions_provider: PredictionsProviderABC = Depends(get_predictions_provider),
 ) -> list[MarketQuote]:
     """Get top movers based on 24h change.

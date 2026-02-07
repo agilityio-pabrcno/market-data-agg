@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from market_data_agg.dependencies import get_stocks_provider
-from market_data_agg.providers import StocksProviderABC
+from market_data_agg.providers import MarketProviderABC
 from market_data_agg.schemas import MarketQuote
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 @router.get("/overview", response_model=list[MarketQuote])
 async def get_stocks_overview(
-    provider: StocksProviderABC = Depends(get_stocks_provider),
+    provider: MarketProviderABC = Depends(get_stocks_provider),
 ) -> list[MarketQuote]:
     """Get overview (main) stock quotes.
 
@@ -38,7 +38,7 @@ async def get_stocks_overview(
 @router.get("/{symbol}", response_model=MarketQuote)
 async def get_stock_quote(
     symbol: str,
-    provider: StocksProviderABC = Depends(get_stocks_provider),
+    provider: MarketProviderABC = Depends(get_stocks_provider),
 ) -> MarketQuote:
     """Get the current quote for a stock symbol.
 
@@ -59,7 +59,7 @@ async def get_stock_quote(
 async def get_stock_history(
     symbol: str,
     days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
-    provider: StocksProviderABC = Depends(get_stocks_provider),
+    provider: MarketProviderABC = Depends(get_stocks_provider),
 ) -> list[MarketQuote]:
     """Get historical data for a stock symbol.
 
@@ -82,7 +82,7 @@ async def get_stock_history(
 
 @router.post("/refresh")
 async def refresh_stocks(
-    provider: StocksProviderABC = Depends(get_stocks_provider),
+    provider: MarketProviderABC = Depends(get_stocks_provider),
 ) -> dict[str, str]:
     """Force refresh the stock data provider.
 

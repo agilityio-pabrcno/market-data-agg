@@ -10,13 +10,10 @@ import websockets
 from websockets import ClientConnection
 
 from market_data_agg.db import Source
-from market_data_agg.providers.predictions.predictions_provider_abc import (
-    PredictionsProviderABC,
-)
 from market_data_agg.providers.predictions.polymarket.dto import (
-    PolymarketEventDTO,
-    PolymarketMarketDTO,
-)
+    PolymarketEventDTO, PolymarketMarketDTO)
+from market_data_agg.providers.predictions.predictions_provider_abc import \
+    PredictionsProviderABC
 from market_data_agg.schemas import MarketQuote
 
 
