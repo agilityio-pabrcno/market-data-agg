@@ -33,6 +33,7 @@ ruff = "^0.15.0"
 dev = "market_data_agg.main:run_dev"
 db-generate = "market_data_agg.db.cli:generate"
 db-migrate = "market_data_agg.db.cli:migrate"
+start = "market_data_agg.main:run"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

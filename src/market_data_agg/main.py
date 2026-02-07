@@ -43,6 +43,11 @@ def health():
     """Return health check status."""
     return {"status": "ok"}
 
+def run():
+    """Run the server (uvicorn). Use for `poetry run start`."""
+    uvicorn.run("market_data_agg.main:app", host="127.0.0.1", port=8001)
+
+
 def run_dev():
     """Run the development server with Postgres running via Docker."""
     project_root = Path(__file__).resolve().parent.parent.parent

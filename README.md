@@ -289,15 +289,15 @@ Advantages:
 Start the server (from project root):
 
 ```bash
-poetry run uvicorn market_data_agg.main:app --host 127.0.0.1 --port 8000
+poetry run uvicorn market_data_agg.main:app --host 127.0.0.1 --port 8001
 ```
 
-Base URL: **http://127.0.0.1:8000**
+Base URL: **http://127.0.0.1:8001**
 
 ### Health
 
 ```bash
-curl -s http://127.0.0.1:8000/
+curl -s http://127.0.0.1:8001/
 # → {"status":"ok"}
 ```
 
@@ -306,36 +306,36 @@ curl -s http://127.0.0.1:8000/
 **Stocks**
 
 ```bash
-curl -s http://127.0.0.1:8000/stocks/overview
-curl -s http://127.0.0.1:8000/stocks/AAPL
-curl -s "http://127.0.0.1:8000/stocks/AAPL/history?days=7"
-curl -s -X POST http://127.0.0.1:8000/stocks/refresh
+curl -s http://127.0.0.1:8001/stocks/overview
+curl -s http://127.0.0.1:8001/stocks/AAPL
+curl -s "http://127.0.0.1:8001/stocks/AAPL/history?days=7"
+curl -s -X POST http://127.0.0.1:8001/stocks/refresh
 ```
 
 **Crypto**
 
 ```bash
-curl -s http://127.0.0.1:8000/crypto/overview
-curl -s http://127.0.0.1:8000/crypto/bitcoin
-curl -s "http://127.0.0.1:8000/crypto/bitcoin/history?days=7"
-curl -s -X POST http://127.0.0.1:8000/crypto/refresh
+curl -s http://127.0.0.1:8001/crypto/overview
+curl -s http://127.0.0.1:8001/crypto/bitcoin
+curl -s "http://127.0.0.1:8001/crypto/bitcoin/history?days=7"
+curl -s -X POST http://127.0.0.1:8001/crypto/refresh
 ```
 
 **Predictions**
 
 ```bash
-curl -s http://127.0.0.1:8000/predictions/overview
-curl -s "http://127.0.0.1:8000/predictions/markets?limit=10"
-curl -s http://127.0.0.1:8000/predictions/markets/microstrategy-sell-any-bitcoin-in-2025
-curl -s -X POST http://127.0.0.1:8000/predictions/refresh
+curl -s http://127.0.0.1:8001/predictions/overview
+curl -s "http://127.0.0.1:8001/predictions/markets?limit=10"
+curl -s http://127.0.0.1:8001/predictions/markets/microstrategy-sell-any-bitcoin-in-2025
+curl -s -X POST http://127.0.0.1:8001/predictions/refresh
 ```
 
 **Markets (aggregated)**
 
 ```bash
-curl -s http://127.0.0.1:8000/markets/overview
-curl -s "http://127.0.0.1:8000/markets/top-movers?limit=10"
-curl -s "http://127.0.0.1:8000/markets/top-movers?source=stock&limit=5"
+curl -s http://127.0.0.1:8001/markets/overview
+curl -s "http://127.0.0.1:8001/markets/top-movers?limit=10"
+curl -s "http://127.0.0.1:8001/markets/top-movers?source=stock&limit=5"
 ```
 
 ### WebSocket streams
@@ -346,19 +346,19 @@ Per-provider streams; pass symbols in the query string. Each message is a `Marke
 # Install wscat: npm i -g wscat
 
 # Stocks (polling)
-wscat -c "ws://127.0.0.1:8000/stocks/stream?symbols=AAPL,MSFT"
+wscat -c "ws://127.0.0.1:8001/stocks/stream?symbols=AAPL,MSFT"
 
 # Crypto (polling)
-wscat -c "ws://127.0.0.1:8000/crypto/stream?symbols=bitcoin,ethereum"
+wscat -c "ws://127.0.0.1:8001/crypto/stream?symbols=bitcoin,ethereum"
 
 # Predictions (Polymarket CLOB)
-wscat -c "ws://127.0.0.1:8000/predictions/stream?symbols=microstrategy-sell-any-bitcoin-in-2025"
+wscat -c "ws://127.0.0.1:8001/predictions/stream?symbols=microstrategy-sell-any-bitcoin-in-2025"
 ```
 
 ### Optional
 
-Show HTTP status: `curl -s -w "\nHTTP %{http_code}\n" http://127.0.0.1:8000/stocks/AAPL`  
-Pretty-print JSON: `curl -s http://127.0.0.1:8000/stocks/AAPL | jq .`
+Show HTTP status: `curl -s -w "\nHTTP %{http_code}\n" http://127.0.0.1:8001/stocks/AAPL`  
+Pretty-print JSON: `curl -s http://127.0.0.1:8001/stocks/AAPL | jq .`
 
 More detail: see **docs/CURL_MANUAL_TEST.md** and **docs/ROUTER_CURL_TESTS.md**.
 

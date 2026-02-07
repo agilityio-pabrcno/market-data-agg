@@ -5,11 +5,8 @@ from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide
 from fastapi import Depends, HTTPException, Request, WebSocket
 
-from market_data_agg.providers import (
-    CoinGeckoProvider,
-    PolymarketProvider,
-    YFinanceProvider,
-)
+from market_data_agg.providers import (CoinGeckoProvider, PolymarketProvider,
+                                       YFinanceProvider)
 from market_data_agg.services import MarketService, MarketsService
 from market_data_agg.services.market_factory import create_market_service
 
@@ -96,5 +93,6 @@ def get_prediction_service_ws(websocket: WebSocket, provider: str) -> MarketServ
     return _prediction_service(websocket.scope["app"].state.container, provider)
 
 
-def get_prediction_providers(request: Request) -> list[str]:
-    return list(request.app.state.container.prediction_services().keys())
+# Type aliases for prediction routes (depend on path param `provider`; define after get_prediction_*)
+PredictionService = Annotated[MarketService, Depends(get_prediction_service)]
+PredictionServiceWs = Annotated[MarketService, Depends(get_prediction_service_ws)]

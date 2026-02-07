@@ -4,7 +4,6 @@ from fastapi import APIRouter, Query, WebSocket
 
 from market_data_agg.container import CryptoService
 from market_data_agg.schemas import MarketQuote
-from market_data_agg.services import MarketService
 
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
