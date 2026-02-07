@@ -70,6 +70,101 @@ class PolymarketProvider(PredictionsProviderABC):
         """Fetch active prediction markets for overview."""
         return await self.list_markets(active=True, limit=5)
 
+    async def _build_symbol_mapping(
+        self, symbols: list[str]
+    ) -> tuple[dict[str, str], list[str]]:
+        """Build token_id -> symbol map and flat asset_ids from market slugs.
+
+        The CLOB WebSocket identifies assets by opaque token IDs (e.g. 0x...),
+        but callers pass human-readable slugs (e.g. "will-bitcoin-hit-100k").
+        We fetch each market from Gamma to resolve slugs -> token IDs and to
+        map token IDs back to the market question (symbol) for MarketQuote output.
+        """
+        token_to_symbol: dict[str, str] = {}
+        asset_ids: list[str] = []
+        for slug in symbols:
+            market_dto = await self._fetch_market(slug)
+            question = market_dto.symbol
+            for token_id in market_dto.clob_token_ids_parsed:
+                token_to_symbol[token_id] = question
+            asset_ids.extend(market_dto.clob_token_ids_parsed)
+        return token_to_symbol, asset_ids
+
+    def _parse_message_timestamp(self, data: dict) -> datetime:
+        """Parse timestamp from WS message; fallback to utcnow.
+
+        CLOB messages may include a timestamp (ms since epoch) or omit it.
+        We need a datetime for every MarketQuote; if absent or invalid,
+        we use utcnow() so streaming never fails on malformed timestamps.
+        """
+        ts_raw = data.get("timestamp")
+        if ts_raw is None:
+            return datetime.utcnow()
+        try:
+            return datetime.fromtimestamp(int(ts_raw) / 1000)
+        except (ValueError, TypeError):
+            return datetime.utcnow()
+
+    def _quote_from_price(
+        self,
+        asset_id: str,
+        price: float,
+        ts: datetime,
+        token_to_symbol: dict[str, str],
+    ) -> MarketQuote:
+        """Build MarketQuote from asset_id, price, and timestamp.
+
+        Centralizes the conversion so both last_trade_price and price_change
+        events produce the same MarketQuote shape. Resolves asset_id to the
+        human-readable symbol (market question) via token_to_symbol.
+        """
+        symbol = token_to_symbol.get(asset_id, asset_id)
+        return MarketQuote(
+            source=Source.EVENTS,
+            symbol=symbol,
+            value=price,
+            volume=None,
+            timestamp=ts,
+            metadata=None,
+        )
+
+    def _quotes_from_message(
+        self,
+        data: dict,
+        token_to_symbol: dict[str, str],
+        ts: datetime,
+    ) -> list[MarketQuote]:
+        """Extract MarketQuotes from a single WS message.
+
+        CLOB sends two event types we care about: last_trade_price (single
+        asset) and price_change (multiple assets). Isolating this logic keeps
+        stream() focused on the receive loop; we parse once and yield 0..N
+        quotes per message.
+        """
+        quotes: list[MarketQuote] = []
+        event_type = data.get("event_type")
+
+        if event_type == "last_trade_price":
+            asset_id = data.get("asset_id")
+            if asset_id is not None:
+                price = float(data.get("price", 0))
+                quotes.append(
+                    self._quote_from_price(asset_id, price, ts, token_to_symbol)
+                )
+        elif event_type == "price_change":
+            for change in data.get("price_changes") or []:
+                asset_id = change.get("asset_id")
+                best_bid = change.get("best_bid")
+                if asset_id is None or not best_bid or best_bid == "0":
+                    continue
+                quotes.append(
+                    self._quote_from_price(
+                        asset_id, float(best_bid), ts, token_to_symbol
+                    )
+                )
+
+        return quotes
+
     async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
         """Stream real-time price updates for prediction markets.
 
@@ -82,39 +177,9 @@ class PolymarketProvider(PredictionsProviderABC):
             MarketQuote objects with probability updates.
         """
         self._streaming = True
-
-        # Map CLOB token IDs -> symbol (question) for consistent MarketQuote.symbol
-        token_to_symbol: dict[str, str] = {}
-        asset_ids: list[str] = []
-        for slug in symbols:
-            market_dto = await self._fetch_market(slug)
-            question = market_dto.symbol  # question or slug fallback
-            for token_id in market_dto.clob_token_ids_parsed:
-                token_to_symbol[token_id] = question
-            asset_ids.extend(market_dto.clob_token_ids_parsed)
-
+        token_to_symbol, asset_ids = await self._build_symbol_mapping(symbols)
         if not asset_ids:
             return
-
-        def _timestamp_from_msg(data: dict) -> datetime:
-            ts = data.get("timestamp")
-            if ts is not None:
-                try:
-                    return datetime.fromtimestamp(int(ts) / 1000)
-                except (ValueError, TypeError):
-                    pass
-            return datetime.utcnow()
-
-        def _quote_for(asset_id: str, price: float, ts: datetime) -> MarketQuote:
-            symbol = token_to_symbol.get(asset_id, asset_id)
-            return MarketQuote(
-                source=Source.EVENTS,
-                symbol=symbol,
-                value=price,
-                volume=None,
-                timestamp=ts,
-                metadata=None,
-            )
 
         try:
             async with websockets.connect(self.CLOB_WSS_URL) as ws:
@@ -127,23 +192,11 @@ class PolymarketProvider(PredictionsProviderABC):
                     try:
                         raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
                         data = json.loads(raw)
-                        event_type = data.get("event_type")
-                        ts = _timestamp_from_msg(data)
-
-                        if event_type == "last_trade_price":
-                            asset_id = data.get("asset_id")
-                            if asset_id is not None:
-                                price = float(data.get("price", 0))
-                                yield _quote_for(asset_id, price, ts)
-                        if event_type == "price_change":
-                            for change in data.get("price_changes") or []:
-                                asset_id = change.get("asset_id")
-                                best_bid = change.get("best_bid")
-                                if asset_id is None or not best_bid or best_bid == "0":
-                                    continue
-                                yield _quote_for(
-                                    asset_id, float(best_bid), ts
-                                )
+                        ts = self._parse_message_timestamp(data)
+                        for quote in self._quotes_from_message(
+                            data, token_to_symbol, ts
+                        ):
+                            yield quote
                     except asyncio.TimeoutError:
                         await ws.ping()
 
