@@ -13,7 +13,7 @@ class MarketProviderABC(ABC):
     to provide a unified way to fetch quotes, historical data, and real-time streams.
 
     Subclasses must call super().__init__() and must not set _streaming directly;
-    the streaming property (set in base __init__) is used by stream_by_polling to stop when close() is called.
+    the streaming property is used by stream_by_polling to stop when close() is called.
     """
 
     def __init__(self) -> None:

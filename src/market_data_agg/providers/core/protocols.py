@@ -7,16 +7,15 @@ from market_data_agg.schemas import MarketQuote
 class PollingStreamable(Protocol):
     """Protocol for providers that use stream_by_polling.
 
-    Must expose a mutable streaming flag so the polling loop can be stopped
-    when the client disconnects or close() is called.
+    Must expose a mutable streaming flag (MarketProviderABC provides this) so the
+    polling loop can be stopped when the client disconnects or close() is called.
     """
 
     @property
     def streaming(self) -> bool: ...
 
     @streaming.setter
-    def streaming(self, value: bool) -> None:
-        self._streaming = value
+    def streaming(self, value: bool) -> None: ...
 
 
 class ListMarketsProvider(Protocol):

@@ -5,12 +5,10 @@ Aggregate routes: /predictions, /predictions/overview.
 """
 # Route order: static paths before /{provider}/... so they match first.
 
-from typing import Annotated
+from dependency_injector.wiring import inject
+from fastapi import APIRouter, Query, WebSocket
 
-from dependency_injector.wiring import Provide
-from fastapi import APIRouter, Depends, Query, WebSocket
-
-from market_data_agg.container import (Container, PolymarketServiceWs,
+from market_data_agg.container import (MarketsServiceDep, PolymarketServiceWs,
                                        PredictionService, PredictionServiceWs)
 from market_data_agg.schemas import MarketQuote
 
@@ -30,9 +28,8 @@ async def stream_predictions_default(
 
 
 @router.get("/overview", response_model=list[MarketQuote])
-async def get_predictions_overview(
-    service: Annotated[PredictionService, Depends(Provide[Container.prediction_services])],
-) -> list[MarketQuote]:
+@inject
+async def get_predictions_overview(service: MarketsServiceDep) -> list[MarketQuote]:
     """Overview (active markets) from all prediction providers."""
     return await service.get_predictions_overview()
 
