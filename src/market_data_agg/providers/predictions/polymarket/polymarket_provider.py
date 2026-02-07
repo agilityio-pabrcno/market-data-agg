@@ -10,6 +10,7 @@ import websockets
 from websockets import ClientConnection
 
 from market_data_agg.db import Source
+from market_data_agg.providers.core import round2
 from market_data_agg.providers.predictions.polymarket.dto import (
     PolymarketEventDTO, PolymarketMarketDTO)
 from market_data_agg.providers.predictions.predictions_provider_abc import \
@@ -70,6 +71,47 @@ class PolymarketProvider(PredictionsProviderABC):
         """Fetch active prediction markets for overview."""
         return await self.list_markets(active=True, limit=5)
 
+    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
+        """Stream real-time price updates for prediction markets.
+
+        Uses WebSocket connection to CLOB for real-time updates.
+
+        Args:
+            symbols: List of market slugs.
+
+        Yields:
+            MarketQuote objects with probability updates.
+        """
+        self._streaming = True
+        token_to_symbol, asset_ids = await self._build_symbol_mapping(symbols)
+        if not asset_ids:
+            return
+
+        try:
+            async with websockets.connect(self.CLOB_WSS_URL) as ws:
+                self._ws = ws
+                await ws.send(
+                    json.dumps({"type": "MARKET", "assets_ids": asset_ids})
+                )
+
+                while self._streaming:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
+                        data = json.loads(raw)
+                        ts = self._parse_message_timestamp(data)
+                        for quote in self._quotes_from_message(
+                            data, token_to_symbol, ts
+                        ):
+                            yield quote
+                    except asyncio.TimeoutError:
+                        await ws.ping()
+
+        except websockets.ConnectionClosed:
+            pass
+        finally:
+            self._streaming = False
+            self._ws = None
+
     async def _build_symbol_mapping(
         self, symbols: list[str]
     ) -> tuple[dict[str, str], list[str]]:
@@ -122,7 +164,7 @@ class PolymarketProvider(PredictionsProviderABC):
         return MarketQuote(
             source=Source.EVENTS,
             symbol=symbol,
-            value=price,
+            value=round2(price),
             volume=None,
             timestamp=ts,
             metadata=None,
@@ -141,70 +183,27 @@ class PolymarketProvider(PredictionsProviderABC):
         stream() focused on the receive loop; we parse once and yield 0..N
         quotes per message.
         """
-        quotes: list[MarketQuote] = []
         event_type = data.get("event_type")
 
         if event_type == "last_trade_price":
             asset_id = data.get("asset_id")
-            if asset_id is not None:
-                price = float(data.get("price", 0))
-                quotes.append(
-                    self._quote_from_price(asset_id, price, ts, token_to_symbol)
-                )
-        elif event_type == "price_change":
-            for change in data.get("price_changes") or []:
-                asset_id = change.get("asset_id")
-                best_bid = change.get("best_bid")
-                if asset_id is None or not best_bid or best_bid == "0":
-                    continue
-                quotes.append(
-                    self._quote_from_price(
-                        asset_id, float(best_bid), ts, token_to_symbol
-                    )
-                )
+            if asset_id is None:
+                return []
+            price = float(data.get("price", 0))
+            return [self._quote_from_price(asset_id, price, ts, token_to_symbol)]
 
-        return quotes
+        if event_type == "price_change":
+            return [
+                self._quote_from_price(asset_id, float(best_bid), ts, token_to_symbol)
+                for change in data.get("price_changes") or []
+                if (asset_id := change.get("asset_id")) is not None
+                and (best_bid := change.get("best_bid"))
+                and best_bid != "0"
+            ]
 
-    async def stream(self, symbols: list[str]) -> AsyncIterator[MarketQuote]:
-        """Stream real-time price updates for prediction markets.
+        return []
 
-        Uses WebSocket connection to CLOB for real-time updates.
-
-        Args:
-            symbols: List of market slugs.
-
-        Yields:
-            MarketQuote objects with probability updates.
-        """
-        self._streaming = True
-        token_to_symbol, asset_ids = await self._build_symbol_mapping(symbols)
-        if not asset_ids:
-            return
-
-        try:
-            async with websockets.connect(self.CLOB_WSS_URL) as ws:
-                self._ws = ws
-                await ws.send(
-                    json.dumps({"type": "MARKET", "assets_ids": asset_ids})
-                )
-
-                while self._streaming:
-                    try:
-                        raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
-                        data = json.loads(raw)
-                        ts = self._parse_message_timestamp(data)
-                        for quote in self._quotes_from_message(
-                            data, token_to_symbol, ts
-                        ):
-                            yield quote
-                    except asyncio.TimeoutError:
-                        await ws.ping()
-
-        except websockets.ConnectionClosed:
-            pass
-        finally:
-            self._streaming = False
-            self._ws = None
+ 
 
     async def list_markets(
         self,

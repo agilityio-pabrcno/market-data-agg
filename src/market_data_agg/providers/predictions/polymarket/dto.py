@@ -10,6 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from market_data_agg.db import Source
+from market_data_agg.providers.core import round2
 from market_data_agg.providers.predictions.polymarket.models import PolymarketQuoteMetadata
 from market_data_agg.schemas import MarketQuote
 
@@ -156,8 +157,8 @@ class PolymarketMarketDTO(BaseModel):
         return MarketQuote(
             source=Source.EVENTS,
             symbol=self.symbol,
-            value=self.value,
-            volume=self.volume_compiled,
+            value=round2(self.value),
+            volume=round2(self.volume_compiled),
             timestamp=self.timestamp_compiled,
             metadata=self.to_metadata_dict(),
         )

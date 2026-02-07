@@ -7,7 +7,7 @@ from datetime import datetime
 import httpx
 
 from market_data_agg.db import Source
-from market_data_agg.providers.core import MarketProviderABC
+from market_data_agg.providers.core import MarketProviderABC, round2
 from market_data_agg.providers.crypto.coingecko.models import (
     CoinGeckoHistoryParams, CoinGeckoMarketsParams, CoinGeckoQuoteMetadata,
     CoinGeckoSimplePriceParams, CoinGeckoStreamPriceParams)
@@ -120,11 +120,11 @@ class CoinGeckoProvider(MarketProviderABC):
             MarketQuote(
                 source=Source.CRYPTO,
                 symbol=coin_id,
-                value=float(price),
-                volume=float(volume_by_ts.get(ts_ms, 0)) or None,
+                value=round2(float(price)),
+                volume=round2(float(volume_by_ts.get(ts_ms, 0))) or None,
                 timestamp=datetime.fromtimestamp(ts_ms / 1000),
                 metadata=CoinGeckoQuoteMetadata(
-                    market_cap=mcap_by_ts.get(ts_ms),
+                    market_cap=round2(mcap_by_ts.get(ts_ms)),
                 ).model_dump(),
             )
             for (ts_ms, price) in (p[:2] for p in prices)
@@ -185,14 +185,14 @@ class CoinGeckoProvider(MarketProviderABC):
         """Build a MarketQuote from a /simple/price response row."""
         vol = data.get("usd_24h_vol")
         meta = CoinGeckoQuoteMetadata(
-            market_cap=data.get("usd_market_cap"),
-            change_24h=data.get("usd_24h_change"),
+            market_cap=round2(data.get("usd_market_cap")),
+            change_24h=round2(data.get("usd_24h_change")),
         )
         return MarketQuote(
             source=Source.CRYPTO,
             symbol=coin_id,
-            value=float(data["usd"]),
-            volume=float(vol) if vol else None,
+            value=round2(float(data["usd"])),
+            volume=round2(float(vol)) if vol else None,
             timestamp=_parse_timestamp(data.get("last_updated_at")),
             metadata=meta.model_dump(),
         )
@@ -201,14 +201,14 @@ class CoinGeckoProvider(MarketProviderABC):
         """Build a MarketQuote from a /coins/markets response item."""
         vol = item.get("total_volume")
         meta = CoinGeckoQuoteMetadata(
-            market_cap=item.get("market_cap"),
-            change_24h=item.get("price_change_percentage_24h"),
+            market_cap=round2(item.get("market_cap")),
+            change_24h=round2(item.get("price_change_percentage_24h")),
         )
         return MarketQuote(
             source=Source.CRYPTO,
             symbol=item["id"],
-            value=float(item["current_price"]),
-            volume=float(vol) if vol else None,
+            value=round2(float(item["current_price"])),
+            volume=round2(float(vol)) if vol else None,
             timestamp=datetime.utcnow(),
             metadata=meta.model_dump(),
         )

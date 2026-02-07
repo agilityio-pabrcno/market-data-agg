@@ -6,7 +6,7 @@ from datetime import datetime
 import yfinance as yf
 
 from market_data_agg.db import Source
-from market_data_agg.providers.core import MarketProviderABC
+from market_data_agg.providers.core import MarketProviderABC, round2
 from market_data_agg.providers.stocks.yfinance.models import YFinanceBarMetadata
 from market_data_agg.schemas import MarketQuote
 
@@ -47,8 +47,8 @@ class YFinanceProvider(MarketProviderABC):
         return MarketQuote(
             source=Source.STOCK,
             symbol=symbol,
-            value=value,
-            volume=volume,
+            value=round2(value),
+            volume=round2(volume),
             timestamp=datetime.utcnow(),
             metadata=metadata or {"provider": "yfinance"},
         )
@@ -104,15 +104,15 @@ class YFinanceProvider(MarketProviderABC):
         """Build a MarketQuote from a history DataFrame row."""
         vol = row["Volume"]
         bar = YFinanceBarMetadata(
-            open=float(row["Open"]),
-            high=float(row["High"]),
-            low=float(row["Low"]),
+            open=round2(float(row["Open"])),
+            high=round2(float(row["High"])),
+            low=round2(float(row["Low"])),
         )
         return MarketQuote(
             source=Source.STOCK,
             symbol=symbol,
-            value=float(row["Close"]),
-            volume=float(vol) if vol else None,
+            value=round2(float(row["Close"])),
+            volume=round2(float(vol)) if vol else None,
             timestamp=timestamp,
             metadata=bar.model_dump(),
         )
