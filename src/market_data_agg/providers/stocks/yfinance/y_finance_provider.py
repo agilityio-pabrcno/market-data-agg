@@ -5,10 +5,9 @@ from datetime import datetime
 
 import yfinance as yf
 
-from market_data_agg.providers.core.stream_helpers import stream_by_polling
-
 from market_data_agg.db import Source
 from market_data_agg.providers.core import MarketProviderABC, round2
+from market_data_agg.providers.core.stream_helpers import stream_by_polling
 from market_data_agg.providers.core.utils import normalize_stock_symbol
 from market_data_agg.providers.stocks.yfinance.models import \
     YFinanceBarMetadata
@@ -34,44 +33,33 @@ class YFinanceProvider(MarketProviderABC):
         super().__init__()
         self._poll_interval = poll_interval
 
-    @staticmethod
-    def _quote(
-        symbol: str,
-        value: float,
-        volume: float | None,
-        *,
-        metadata: dict | None = None,
-    ) -> MarketQuote:
-        """Build a MarketQuote from price/volume."""
-        return MarketQuote(
-            source=Source.STOCK,
-            symbol=symbol,
-            value=round2(value),
-            volume=round2(volume),
-            timestamp=datetime.utcnow(),
-            metadata=metadata or {"provider": "yfinance"},
-        )
+    def _extract_price_volume(
+        self, ticker: yf.Ticker, symbol: str
+    ) -> tuple[float, float | None]:
+        """Extract price and volume from ticker; raises if price unavailable."""
+        info = getattr(ticker, "fast_info", None)
+        if info and (price := info.get("lastPrice") or info.get("regularMarketPrice")):
+            vol = info.get("lastVolume")
+            return float(price), float(vol) if vol is not None else None
+        full = ticker.info
+        price = full.get("currentPrice") or full.get("regularMarketPrice")
+        if price is None:
+            raise ValueError(f"Stock '{symbol}' not found or has no price data")
+        vol = full.get("volume")
+        return float(price), float(vol) if vol is not None else None
 
     def _fetch_quote_sync(self, symbol: str) -> MarketQuote:
         """Fetch a single quote synchronously (run in thread)."""
         ticker = yf.Ticker(symbol)
         try:
-            info = getattr(ticker, "fast_info", None)
-            price = None
-            volume = None
-            if info is not None:
-                price = info.get("lastPrice") or info.get("regularMarketPrice")
-                volume = info.get("lastVolume")
-            if price is None:
-                full = ticker.info
-                price = full.get("currentPrice") or full.get("regularMarketPrice")
-                volume = volume if volume is not None else full.get("volume")
-            if price is None:
-                raise ValueError(f"Stock '{symbol}' not found or has no price data")
-            return self._quote(
-                symbol,
-                float(price),
-                float(volume) if volume is not None else None,
+            price, volume = self._extract_price_volume(ticker, symbol)
+            return MarketQuote(
+                source=Source.STOCK,
+                symbol=symbol,
+                value=round2(price),
+                volume=round2(volume),
+                timestamp=datetime.utcnow(),
+                metadata={"provider": "yfinance"},
             )
         except ValueError:
             raise
@@ -79,14 +67,7 @@ class YFinanceProvider(MarketProviderABC):
             raise ValueError(f"Failed to fetch quote for '{symbol}': {e}") from e
 
     async def get_quote(self, symbol: str) -> MarketQuote:
-        """Fetch the current quote for a stock symbol.
-
-        Args:
-            symbol: Stock ticker (e.g., "AAPL", "MSFT").
-
-        Returns:
-            MarketQuote with the current price.
-        """
+        """Fetch the current quote for a stock symbol."""
         sym = normalize_stock_symbol(symbol)
         return await asyncio.to_thread(self._fetch_quote_sync, sym)
 
@@ -98,56 +79,35 @@ class YFinanceProvider(MarketProviderABC):
         )
         return [q for q in results if isinstance(q, MarketQuote)]
 
-    @staticmethod
-    def _quote_from_row(symbol: str, timestamp: datetime, row: "object") -> MarketQuote:
-        """Build a MarketQuote from a history DataFrame row."""
-        vol = row["Volume"]
-        bar = YFinanceBarMetadata(
-            open=round2(float(row["Open"])),
-            high=round2(float(row["High"])),
-            low=round2(float(row["Low"])),
-        )
-        return MarketQuote(
-            source=Source.STOCK,
-            symbol=symbol,
-            value=round2(float(row["Close"])),
-            volume=round2(float(vol)) if vol else None,
-            timestamp=timestamp,
-            metadata=bar.model_dump(),
-        )
-
-    def _fetch_history_sync(
+    async def get_history(
         self, symbol: str, start: datetime, end: datetime
     ) -> list[MarketQuote]:
-        """Fetch history synchronously (run in thread)."""
-        ticker = yf.Ticker(symbol)
+        """Fetch historical bar data for a stock."""
+        sym = normalize_stock_symbol(symbol)
         try:
-            df = ticker.history(start=start, end=end, interval="1d")
+            df = await asyncio.to_thread(
+                lambda: yf.Ticker(sym).history(start=start, end=end, interval="1d")
+            )
             if df.empty:
                 return []
             return [
-                self._quote_from_row(symbol, ts.to_pydatetime(), row)
+                MarketQuote(
+                    source=Source.STOCK,
+                    symbol=sym,
+                    value=round2(float(row["Close"])),
+                    volume=round2(float(row["Volume"])) if row["Volume"] else None,
+                    timestamp=ts.to_pydatetime(),
+                    metadata=YFinanceBarMetadata(
+                        open=round2(float(row["Open"])),
+                        high=round2(float(row["High"])),
+                        low=round2(float(row["Low"])),
+                    ).model_dump(),
+                )
                 for ts, row in df.iterrows()
                 if not row.isna().any()
             ]
         except Exception as e:
-            raise ValueError(f"Failed to fetch history for '{symbol}': {e}") from e
-
-    async def get_history(
-        self, symbol: str, start: datetime, end: datetime
-    ) -> list[MarketQuote]:
-        """Fetch historical bar data for a stock.
-
-        Args:
-            symbol: Stock ticker.
-            start: Start of time range.
-            end: End of time range.
-
-        Returns:
-            List of MarketQuotes (daily bars) ordered by timestamp.
-        """
-        sym = normalize_stock_symbol(symbol)
-        return await asyncio.to_thread(self._fetch_history_sync, sym, start, end)
+            raise ValueError(f"Failed to fetch history for '{sym}': {e}") from e
 
     async def stream(
         self,

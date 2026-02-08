@@ -121,13 +121,11 @@ class PolymarketProvider(PredictionsProviderABC):
         response.raise_for_status()
         events_data = response.json()
 
-        quotes: list[MarketQuote] = []
-        for event_data in events_data:
-            event_dto = PolymarketEventDTO.model_validate(event_data)
-            for market_dto in event_dto.markets:
-                quotes.append(market_dto.to_market_quote())
-
-        return quotes
+        return [
+            market_dto.to_market_quote()
+            for event_data in events_data
+            for market_dto in PolymarketEventDTO.model_validate(event_data).markets
+        ]
 
     async def refresh(self) -> None:
         """Stop the current stream loop so the next stream() starts fresh."""
