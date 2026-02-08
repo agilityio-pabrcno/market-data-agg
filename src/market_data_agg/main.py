@@ -1,12 +1,51 @@
 """Main module for the market data aggregation service."""
+import logging
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 
-app = FastAPI()
+from market_data_agg.providers import (CoinGeckoProvider, PolymarketProvider,
+                                       YFinanceProvider)
+from market_data_agg.routers import (crypto_router, markets_router,
+                                    predictions_router, stocks_router)
+from market_data_agg.services import MarketsService
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    """Create providers and MarketsService at startup; close via service on shutdown."""
+    markets_service = MarketsService(
+        stocks_provider=YFinanceProvider(poll_interval=15.0),
+        crypto_provider=CoinGeckoProvider(),
+        prediction_provider=PolymarketProvider(poll_interval_seconds=60.0),
+    )
+    fastapi_app.state.markets_service = markets_service
+
+    yield
+
+    await markets_service.close()
+
+
+app = FastAPI(
+    title="Market Data Aggregator",
+    description="Unified API for stocks, crypto, and prediction markets",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# See project root TODO.md for: logging, error management, rate limiting, auth.
+
+# Include routers
+app.include_router(stocks_router)
+app.include_router(crypto_router)
+app.include_router(predictions_router)
+app.include_router(markets_router)
 
 
 
@@ -14,6 +53,11 @@ app = FastAPI()
 def health():
     """Return health check status."""
     return {"status": "ok"}
+
+def run():
+    """Run the server (uvicorn). Use for `poetry run start`."""
+    uvicorn.run("market_data_agg.main:app", host="127.0.0.1", port=8001)
+
 
 def run_dev():
     """Run the development server with Postgres running via Docker."""
