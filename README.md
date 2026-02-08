@@ -149,12 +149,13 @@ GET /crypto/{symbol}/history
 POST /crypto/refresh
 ```
 
-### Polymarket
+### Predictions
 
 ```
-GET /polymarket/markets
-GET /polymarket/markets/{id}
-POST /polymarket/refresh
+GET /predictions/overview
+GET /predictions/markets
+GET /predictions/markets/{id}
+POST /predictions/refresh
 ```
 
 ### Aggregated Views
@@ -190,7 +191,7 @@ Client subscription:
   "subscribe": [
     {"type": "stock", "symbol": "AAPL"},
     {"type": "crypto", "symbol": "BTC"},
-    {"type": "polymarket", "symbol": "event-id"}
+    {"type": "predictions", "symbol": "event-id"}
   ]
 }
 ```
@@ -272,7 +273,7 @@ Using Poetry:
 
 ```
 poetry install
-poetry run uvicorn app.main:app
+poetry run uvicorn market_data_agg.main:app --host 127.0.0.1 --port 8000
 ```
 
 Advantages:
@@ -280,6 +281,86 @@ Advantages:
 * lockfile-based reproducibility
 * isolated environments
 * simplified deployment
+
+---
+
+## Testing the API
+
+Start the server (from project root):
+
+```bash
+poetry run uvicorn market_data_agg.main:app --host 127.0.0.1 --port 8001
+```
+
+Base URL: **http://127.0.0.1:8001**
+
+### Health
+
+```bash
+curl -s http://127.0.0.1:8001/
+# → {"status":"ok"}
+```
+
+### REST (curl)
+
+**Stocks**
+
+```bash
+curl -s http://127.0.0.1:8001/stocks/overview
+curl -s http://127.0.0.1:8001/stocks/AAPL
+curl -s "http://127.0.0.1:8001/stocks/AAPL/history?days=7"
+curl -s -X POST http://127.0.0.1:8001/stocks/refresh
+```
+
+**Crypto**
+
+```bash
+curl -s http://127.0.0.1:8001/crypto/overview
+curl -s http://127.0.0.1:8001/crypto/bitcoin
+curl -s "http://127.0.0.1:8001/crypto/bitcoin/history?days=7"
+curl -s -X POST http://127.0.0.1:8001/crypto/refresh
+```
+
+**Predictions**
+
+```bash
+curl -s http://127.0.0.1:8001/predictions/overview
+curl -s "http://127.0.0.1:8001/predictions/markets?limit=10"
+curl -s http://127.0.0.1:8001/predictions/markets/microstrategy-sell-any-bitcoin-in-2025
+curl -s -X POST http://127.0.0.1:8001/predictions/refresh
+```
+
+**Markets (aggregated)**
+
+```bash
+curl -s http://127.0.0.1:8001/markets/overview
+curl -s "http://127.0.0.1:8001/markets/top-movers?limit=10"
+curl -s "http://127.0.0.1:8001/markets/top-movers?source=stock&limit=5"
+```
+
+### WebSocket streams
+
+Per-provider streams; pass symbols in the query string. Each message is a `MarketQuote` JSON.
+
+```bash
+# Install wscat: npm i -g wscat
+
+# Stocks (polling)
+wscat -c "ws://127.0.0.1:8001/stocks/stream?symbols=AAPL,MSFT"
+
+# Crypto (polling)
+wscat -c "ws://127.0.0.1:8001/crypto/stream?symbols=bitcoin,ethereum"
+
+# Predictions (Polymarket CLOB)
+wscat -c "ws://127.0.0.1:8001/predictions/stream?symbols=microstrategy-sell-any-bitcoin-in-2025"
+```
+
+### Optional
+
+Show HTTP status: `curl -s -w "\nHTTP %{http_code}\n" http://127.0.0.1:8001/stocks/AAPL`  
+Pretty-print JSON: `curl -s http://127.0.0.1:8001/stocks/AAPL | jq .`
+
+More detail: see **docs/CURL_MANUAL_TEST.md** and **docs/ROUTER_CURL_TESTS.md**.
 
 ---
 
