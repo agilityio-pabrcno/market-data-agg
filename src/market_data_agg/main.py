@@ -12,58 +12,24 @@ from market_data_agg.providers import (CoinGeckoProvider, PolymarketProvider,
                                        YFinanceProvider)
 from market_data_agg.routers import (crypto_router, markets_router,
                                     predictions_router, stocks_router)
-from market_data_agg.services import MarketService, MarketsService
-from market_data_agg.services.market_factory import create_market_service
+from market_data_agg.services import MarketsService
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(fastapi_app: FastAPI):
-    """Create providers and services at startup; close providers on shutdown."""
-    # Providers (singletons)
-    stocks_provider = YFinanceProvider(poll_interval=15.0)
-    crypto_provider = CoinGeckoProvider()
-    polymarket_provider = PolymarketProvider(poll_interval_seconds=60.0)
-
-    # Per-domain services
-    stocks_service = create_market_service(
-        stocks_provider, "Stock", "Stocks API", symbol_normalizer=str.upper
-    )
-    crypto_service = create_market_service(
-        crypto_provider, "Crypto", "CoinGecko", symbol_normalizer=str.lower
-    )
-    polymarket_service = create_market_service(
-        polymarket_provider, "Market", "Polymarket"
-    )
-
-    prediction_services: dict[str, MarketService] = {"polymarket": polymarket_service}
+    """Create providers and MarketsService at startup; close via service on shutdown."""
     markets_service = MarketsService(
-        stocks_provider=stocks_provider,
-        crypto_provider=crypto_provider,
-        prediction_providers=[("polymarket", polymarket_provider)],
+        stocks_provider=YFinanceProvider(poll_interval=15.0),
+        crypto_provider=CoinGeckoProvider(),
+        prediction_provider=PolymarketProvider(poll_interval_seconds=60.0),
     )
-
-    fastapi_app.state.stocks_service = stocks_service
-    fastapi_app.state.crypto_service = crypto_service
     fastapi_app.state.markets_service = markets_service
-    fastapi_app.state.prediction_services = prediction_services
-
-    # Keep provider refs for clean shutdown
-    fastapi_app.state.providers_to_close = [
-        stocks_provider,
-        crypto_provider,
-        polymarket_provider,
-    ]
 
     yield
 
-    # Close provider resources (e.g. httpx clients)
-    for provider in fastapi_app.state.providers_to_close:
-        try:
-            await provider.close()
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Error closing provider %s: %s", type(provider).__name__, exc)
+    await markets_service.close()
 
 
 app = FastAPI(
@@ -73,8 +39,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# TODO: Add middlewares for API gateway (auth, request ID, CORS).
-# TODO: Add rate limiting middleware (e.g. slowapi or custom per-route limits).
+# See project root TODO.md for: logging, error management, rate limiting, auth.
 
 # Include routers
 app.include_router(stocks_router)

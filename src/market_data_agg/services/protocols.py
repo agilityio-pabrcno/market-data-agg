@@ -1,4 +1,4 @@
-"""Protocols for market data services."""
+"""Protocols for service-layer stream sources."""
 import asyncio
 from collections.abc import AsyncIterator
 from typing import Protocol
@@ -7,10 +7,7 @@ from market_data_agg.schemas import MarketQuote
 
 
 class QuoteStreamable(Protocol):
-    """Protocol for services that can stream MarketQuotes over WebSocket.
-
-    Used by handle_websocket_stream for type-safe streaming.
-    """
+    """Protocol for objects that can stream MarketQuotes (e.g. a provider)."""
 
     async def stream(
         self,
@@ -18,4 +15,5 @@ class QuoteStreamable(Protocol):
         *,
         stop_event: asyncio.Event | None = None,
     ) -> AsyncIterator[MarketQuote]:
-        """Stream real-time quotes for the given symbols."""
+        """Stream quotes for the given symbols until stop_event is set."""
+        ...

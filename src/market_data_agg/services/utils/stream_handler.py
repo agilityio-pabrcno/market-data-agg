@@ -1,7 +1,7 @@
 """WebSocket stream handling: parse symbols and stream MarketQuotes from a service."""
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -10,6 +10,10 @@ from market_data_agg.schemas import MarketQuote
 from market_data_agg.services.protocols import QuoteStreamable
 
 logger = logging.getLogger(__name__)
+
+StreamSource = QuoteStreamable | Callable[
+    [list[str], asyncio.Event], AsyncIterator[MarketQuote]
+]
 
 
 def parse_symbols_param(
@@ -26,12 +30,14 @@ def parse_symbols_param(
 
 async def handle_websocket_stream(
     websocket: WebSocket,
-    service: QuoteStreamable,
+    stream_source: StreamSource,
     symbol_list: list[str],
     symbols_required_message: str,
 ) -> None:
-    """Accept WebSocket, validate symbols, then stream MarketQuotes from the service.
+    """Accept WebSocket, validate symbols, then stream MarketQuotes.
 
+    stream_source: either a QuoteStreamable (has .stream) or a callable
+    (symbol_list, stop_event) -> AsyncIterator[MarketQuote].
     Uses a per-connection stop_event so one client disconnect does not stop
     other clients (safe with singleton providers).
     """
@@ -41,7 +47,11 @@ async def handle_websocket_stream(
         return
     stop_event: asyncio.Event = asyncio.Event()
     try:
-        async for quote in service.stream(symbol_list, stop_event=stop_event):
+        if callable(stream_source):
+            stream = stream_source(symbol_list, stop_event)
+        else:
+            stream = stream_source.stream(symbol_list, stop_event=stop_event)
+        async for quote in stream:
             if isinstance(quote, MarketQuote):
                 await websocket.send_json(quote.model_dump(mode="json"))
     except WebSocketDisconnect:
